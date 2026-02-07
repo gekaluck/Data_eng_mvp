@@ -65,10 +65,3 @@ After completing a task or milestone:
 When in doubt:
 - Ask a question.
 - Do not guess.
-
-## 8 
-- When creating pr or preparing to create one when finishing a feature always check the context md files in repo to updates like architecture.md and decisions.md and other relevant ones
-
-- After we finished with the pr every time push and create a request 
-- Take into consideration that code will be reviewed and I might provide things to fix and lilke this until we close the pr
-
