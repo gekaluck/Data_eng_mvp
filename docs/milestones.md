@@ -10,7 +10,7 @@ Status key: `planned` | `in progress` | `done`
 ---
 
 ## M0 — Documentation & Planning
-**Status**: in progress
+**Status**: done
 **Branch**: `chore/initial-docs`
 
 **Goal**: Set up project documentation, agree on architecture, and define the roadmap.
@@ -26,8 +26,8 @@ which prevents wasted effort and keeps the learning path coherent.
 ---
 
 ## M1 — Local Infrastructure
-**Status**: planned
-**Branch**: TBD
+**Status**: in progress
+**Branch**: `feat/m1-local-infra`
 
 **Goal**: Get Airflow + MinIO running locally via Docker Compose. Verify the setup works.
 
@@ -159,3 +159,4 @@ and documentation cleanup.
 | Date       | Milestone | Notes                                      |
 |------------|-----------|---------------------------------------------|
 | 2026-02-06 | M0        | Created initial docs, agreed on stack & plan|
+| 2026-02-06 | M1        | Docker Compose with Airflow (LocalExecutor) + MinIO, hello_world DAG |
