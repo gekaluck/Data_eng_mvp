@@ -156,3 +156,36 @@ we add a new entry referencing the old one.
 - Avoids complexity of sub-daily scheduling (overlapping runs, catchup logic)
 
 **Revisit if**: We want to explore near-real-time patterns or streaming concepts.
+
+---
+
+## D009 — Data Modeling: Entity-Centric Silver, Dimensional Gold
+**Date**: 2026-02-06
+**Status**: accepted
+
+**Decision**: Use entity-centric (3NF-leaning) modeling in silver and dimensional
+(fact/dimension) modeling in gold. Treat data modeling as a learning thread across
+milestones, not a separate task.
+
+**Why**:
+- Silver and gold layers serve different audiences and purposes — the model should reflect that
+- Entity modeling in silver teaches normalization, grain, and why separating concerns matters
+- Dimensional modeling in gold teaches how analytical systems differ from transactional ones
+- Doing both in one project shows the full spectrum of modeling choices
+- Weaving modeling into each milestone makes it practical, not academic
+
+**Alternatives considered**:
+- **One Big Table everywhere**: Simple, but teaches bad habits. Redundancy, update anomalies,
+  and unclear grain make OBT painful at scale.
+- **Full Kimball star schema**: More rigorous, but overkill for a 10-coin dataset.
+  We borrow the useful concepts (fact/dim separation, grain clarity) without going full
+  conformance or bus matrix.
+- **Data Vault**: Interesting for auditability and historical tracking, but too abstract
+  for a first project. Better explored after the basics are solid.
+
+**Key concepts we'll practice**:
+- Table grain: "what does one row represent?"
+- Entity identification: breaking a flat API response into distinct concepts
+- Normalization vs. denormalization: when each is appropriate and why
+- Fact vs. dimension: what's measurable vs. what's descriptive
+- Pre-aggregation: trading compute for query speed in gold

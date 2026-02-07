@@ -64,6 +64,8 @@ raw data to MinIO (bronze layer).
 - Airflow operators (PythonOperator or similar)
 - Writing to S3-compatible storage from Python
 - Bronze layer design: what to store, how to partition, why immutability matters
+- **Data modeling**: Why bronze has no model — understanding the value of storing raw data
+  as-is and how it protects you when upstream schemas or your own models change
 
 ---
 
@@ -85,6 +87,9 @@ in the silver layer.
 - Iceberg basics: table creation, partitioning, catalog config
 - Spark + Iceberg integration (JARs, configuration)
 - Orchestrating Spark from Airflow
+- **Data modeling**: Entity identification — breaking raw API responses into distinct
+  tables (coins vs. price snapshots). Understanding table grain ("what does one row mean?"),
+  third normal form in practice, and why separating entities reduces redundancy
 
 ---
 
@@ -102,7 +107,10 @@ in the silver layer.
 **Key learning**:
 - Window functions in Spark
 - Multi-step DAG design
-- Gold layer modeling: what makes a table "analysis-ready"
+- **Data modeling**: Dimensional modeling in practice — fact vs. dimension tables,
+  intentional denormalization, designing tables around questions (not entities),
+  pre-computed metrics (rolling averages, rankings, period-over-period comparisons).
+  Understanding why gold trades normalization for query simplicity
 
 ---
 

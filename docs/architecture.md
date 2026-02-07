@@ -68,23 +68,75 @@ The system follows a **lakehouse-style** architecture with three layers:
 
 ---
 
+## Data Modeling Approach
+
+Data modeling is a cross-cutting concern across the three layers. Each layer has a
+different modeling philosophy, and understanding *why* is as important as the code.
+
+### Modeling by Layer
+
+| Layer  | Modeling style         | Key question                                      |
+|--------|------------------------|---------------------------------------------------|
+| Bronze | No model (raw storage) | "What did the source give us?"                    |
+| Silver | Entity-centric / 3NF   | "What are the real-world things in this data?"    |
+| Gold   | Analytical / dimensional | "What questions do we want to answer?"           |
+
+### Silver: Entity Modeling
+In the silver layer we identify **entities** (the nouns in our domain) and give each
+one a clean, well-typed table. For crypto data, the core entities are:
+
+- **Coin** — static/slow-changing attributes (name, symbol, rank)
+- **Price snapshot** — time-series fact (price, volume, market cap at a point in time)
+
+Separating these is a deliberate modeling choice:
+- Coin attributes change rarely; price data changes daily
+- Keeping them apart avoids redundant storage and makes updates cleaner
+- Joins are cheap and explicit — you always know what you're working with
+
+This is essentially **third normal form (3NF)**: eliminate redundancy, one fact in one place.
+
+### Gold: Dimensional / Analytical Modeling
+In the gold layer we reshape data around **questions**, not entities. This is where
+concepts from dimensional modeling apply:
+
+- **Fact tables**: measurable events (e.g., daily price facts with foreign keys)
+- **Dimension tables**: descriptive context (e.g., coin dimension with attributes)
+- **Denormalization**: intentional — gold trades normalization for query simplicity
+- **Pre-aggregations**: rolling averages, rankings, period-over-period changes
+
+The gold layer optimizes for the *reader*, not the *writer*.
+
+### Why This Matters
+Most data engineering courses skip modeling or treat it as an afterthought. But in practice,
+**bad models cause more pain than bad code**. A poorly modeled silver layer cascades into
+confusing gold tables and unreliable metrics. We'll build both layers deliberately and
+explain the tradeoffs as we go.
+
+---
+
 ## Layer Definitions
 
 ### Bronze
 - **Format**: Raw JSON or Parquet (as-is from API)
 - **Storage**: MinIO, partitioned by ingestion date
 - **Schema enforcement**: None — store what we receive
+- **Modeling**: None — this is intentional. Bronze preserves the source shape exactly,
+  so we can always reprocess from scratch if our models change.
 - **Purpose**: Immutable landing zone; source of truth for reprocessing
 
 ### Silver
 - **Format**: Iceberg tables (Parquet underneath)
 - **Schema enforcement**: Yes — explicit PySpark schemas
 - **Transformations**: Type casting, renaming, deduplication, null handling
+- **Modeling**: Entity-centric (3NF). Separate tables for distinct real-world concepts.
+  Each table has a clear grain (one row = one coin, or one row = one coin per day).
 - **Purpose**: Clean, queryable, structured data
 
 ### Gold
 - **Format**: Iceberg tables (Parquet underneath)
 - **Transformations**: Aggregations, window functions, derived metrics
+- **Modeling**: Analytical / dimensional. Fact and dimension tables, denormalized where
+  it helps readability. Designed around the questions we want to answer.
 - **Purpose**: Analysis-ready datasets (e.g., daily summaries, rolling averages, rankings)
 
 ---
