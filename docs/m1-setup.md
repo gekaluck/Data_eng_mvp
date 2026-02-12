@@ -13,26 +13,45 @@
    cd Data_eng_mvp
    ```
 
-2. **Start everything**:
+2. **Configure environment variables**:
+   ```bash
+   # Copy the example file
+   cp .env.example .env
+   
+   # Edit .env and configure:
+   # - AIRFLOW__CORE__FERNET_KEY (generate a secure key)
+   # - AIRFLOW_ADMIN_PASSWORD (change from default)
+   # - POSTGRES_PASSWORD (change from default)
+   # - MINIO_ROOT_PASSWORD (change from default)
+   ```
+   
+   **CRITICAL SECURITY NOTE**: 
+   - Never commit the `.env` file to version control
+   - Always generate a unique Fernet key using:
+     - Python: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+     - PowerShell: `$bytes = New-Object byte[] 32; (New-Object Random).NextBytes($bytes); [Convert]::ToBase64String($bytes)`
+   - Use strong, unique passwords for all credentials
+
+3. **Start everything**:
    ```bash
    docker compose up -d
    ```
 
-3. **Wait for init services to finish** (takes ~30–60 seconds on first run):
+4. **Wait for init services to finish** (takes ~30–60 seconds on first run):
    ```bash
    docker compose ps
    ```
    You should see `airflow-init` and `minio-init` with status `exited (0)`.
    The other services should be `running` or `healthy`.
 
-4. **Access the UIs**:
-   - Airflow: [http://localhost:8080](http://localhost:8080) — login: `admin` / `admin`
-   - MinIO Console: [http://localhost:9001](http://localhost:9001) — login: `minioadmin` / `minioadmin`
+5. **Access the UIs**:
+   - Airflow: [http://localhost:8080](http://localhost:8080) — login using credentials from your `.env` file
+   - MinIO Console: [http://localhost:9001](http://localhost:9001) — login using credentials from your `.env` file
 
-5. **Verify MinIO buckets**:
+6. **Verify MinIO buckets**:
    Open the MinIO Console — you should see three buckets: `bronze`, `silver`, `gold`.
 
-6. **Run the verification DAG**:
+7. **Run the verification DAG**:
    - In the Airflow UI, find the `hello_world` DAG
    - Unpause it (toggle the slider)
    - Click the play button to trigger a manual run

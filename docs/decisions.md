@@ -249,3 +249,42 @@ variable rather than creating it through the Airflow UI.
 - **Airflow UI**: Clickable but not reproducible. Easy to forget during fresh setup.
 - **Airflow CLI** (`airflow connections add`): Reproducible but requires a running scheduler.
   Env var is simpler and works at container startup.
+
+---
+
+## D013 — Security: Environment Variables for Credentials
+**Date**: 2026-02-07
+**Status**: accepted
+
+**Decision**: All sensitive credentials (Fernet key, admin passwords, database passwords) 
+are managed via environment variables in a `.env` file that is excluded from version control.
+
+**Why**:
+- **Security**: Prevents hardcoded credentials from being committed to the repository
+- **Fernet key**: Required for encrypting sensitive data in the Airflow metadata database; 
+  an empty or weak key exposes stored credentials and connection strings
+- **Flexibility**: Allows different credentials for dev, staging, and production environments
+- **Standard practice**: Industry-standard approach for secrets management in containerized apps
+- **Compliance**: Helps meet security compliance requirements by separating secrets from code
+
+**Implementation**:
+- `.env` file contains actual secrets (gitignored)
+- `.env.example` provides a template that can be safely committed
+- `docker-compose.yml` references environment variables using `${VAR_NAME}` syntax
+- All default passwords have been removed from the codebase
+
+**Security Requirements**:
+- Fernet key must be a cryptographically secure 32-byte base64-encoded value
+- All passwords must be changed from defaults before production use
+- `.env` file must never be committed to version control
+- Each environment should have unique credentials
+
+**Alternatives considered**:
+- **Hardcoded values**: Simple but insecure; credentials in version control is a critical vulnerability
+- **Docker secrets**: More secure for production but adds complexity for local development
+- **External secrets manager** (HashiCorp Vault, AWS Secrets Manager): Overkill for local dev; 
+  good for production but requires additional infrastructure
+
+**Revisit if**: Moving to production deployment where a dedicated secrets management solution 
+would be more appropriate.
+

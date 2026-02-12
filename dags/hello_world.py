@@ -24,13 +24,18 @@ def test_minio_connection():
     so the import doesn't slow down DAG parsing for every scheduler heartbeat.
     """
     import boto3
+    import os
 
-    # Connect to MinIO using the same credentials as docker-compose
+    # Get MinIO credentials from environment variables (same as docker-compose)
+    minio_user = os.getenv("MINIO_ROOT_USER", "minioadmin")
+    minio_password = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
+
+    # Connect to MinIO using the credentials from environment
     s3 = boto3.client(
         "s3",
         endpoint_url="http://minio:9000",
-        aws_access_key_id="minioadmin",
-        aws_secret_access_key="minioadmin",
+        aws_access_key_id=minio_user,
+        aws_secret_access_key=minio_password,
     )
 
     buckets = [b["Name"] for b in s3.list_buckets()["Buckets"]]

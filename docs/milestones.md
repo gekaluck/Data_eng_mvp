@@ -160,3 +160,4 @@ and documentation cleanup.
 |------------|-----------|---------------------------------------------|
 | 2026-02-06 | M0        | Created initial docs, agreed on stack & plan|
 | 2026-02-06 | M1        | Docker Compose with Airflow (LocalExecutor) + MinIO, hello_world DAG |
+| 2026-02-11 | M1        | Security hardening: environment variables for all credentials, Fernet key generation, Windows compatibility fixes |
