@@ -18,7 +18,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-amazon}
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-amazon pydantic pyarrow requests pytest}
 
     # MinIO credentials for DAGs to use
     MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -33,6 +33,7 @@ x-airflow-common: &airflow-common
     - airflow-logs:/opt/airflow/logs
     - ./config:/opt/airflow/config
     - ./plugins:/opt/airflow/plugins
+    - ./tests:/opt/airflow/tests
   user: "0:0"  # Run as root for Windows compatibility
   depends_on:
     postgres:

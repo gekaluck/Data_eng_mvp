@@ -1,0 +1,8 @@
+# Data Engineering MVP — Python dependencies
+# Installed inside Airflow containers via _PIP_ADDITIONAL_REQUIREMENTS
+
+apache-airflow-providers-amazon
+pydantic>=2.0,<3.0
+pyarrow>=14.0,<18.0
+requests>=2.28,<3.0
+pytest>=7.0,<9.0
