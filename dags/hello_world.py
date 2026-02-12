@@ -1,14 +1,15 @@
 """
-Hello World DAG — M1 verification.
+Hello World DAG - M1 verification.
 
 Two tasks that prove the local infrastructure works:
 1. print_hello: confirms the scheduler can execute a task
 2. test_minio_connection: confirms Airflow can reach MinIO and the three buckets exist
 """
 
+from datetime import datetime
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from datetime import datetime
 
 
 def print_hello(**context):
@@ -18,26 +19,10 @@ def print_hello(**context):
 
 
 def test_minio_connection():
-    """
-    Connect to MinIO via boto3 and verify that the expected buckets exist.
-    boto3 is imported inside the function body — this is an Airflow best practice
-    so the import doesn't slow down DAG parsing for every scheduler heartbeat.
-    """
-    import boto3
-    import os
+    """Connect to MinIO using Airflow's managed connection and verify expected buckets."""
+    from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 
-    # Get MinIO credentials from environment variables (same as docker-compose)
-    minio_user = os.getenv("MINIO_ROOT_USER", "minioadmin")
-    minio_password = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
-
-    # Connect to MinIO using the credentials from environment
-    s3 = boto3.client(
-        "s3",
-        endpoint_url="http://minio:9000",
-        aws_access_key_id=minio_user,
-        aws_secret_access_key=minio_password,
-    )
-
+    s3 = S3Hook(aws_conn_id="minio_s3").get_conn()
     buckets = [b["Name"] for b in s3.list_buckets()["Buckets"]]
     print(f"Found buckets: {buckets}")
 
@@ -46,18 +31,17 @@ def test_minio_connection():
     if missing:
         raise ValueError(f"Missing buckets: {missing}")
 
-    print("All expected buckets exist — MinIO connection verified!")
+    print("All expected buckets exist - MinIO connection verified!")
 
 
 with DAG(
     dag_id="hello_world",
     description="M1 verification: proves Airflow scheduler and MinIO connection work",
     start_date=datetime(2024, 1, 1),
-    schedule=None,       # manual trigger only
+    schedule=None,  # manual trigger only
     catchup=False,
     tags=["m1", "verification"],
 ) as dag:
-
     t1 = PythonOperator(
         task_id="print_hello",
         python_callable=print_hello,
