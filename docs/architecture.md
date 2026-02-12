@@ -18,10 +18,10 @@ The system follows a **lakehouse-style** architecture with three layers:
 [CoinCap API]
       |
       v
-  Airflow DAG (daily)
+  Airflow DAG (daily) — Pydantic validation → Parquet
       |
       v
-  Bronze (raw JSON/Parquet in MinIO)
+  Bronze (Parquet in MinIO, date-partitioned)
       |
       v
   PySpark job (clean, type, deduplicate)
@@ -117,11 +117,12 @@ explain the tradeoffs as we go.
 ## Layer Definitions
 
 ### Bronze
-- **Format**: Raw JSON or Parquet (as-is from API)
-- **Storage**: MinIO, partitioned by ingestion date
-- **Schema enforcement**: None — store what we receive
+- **Format**: Parquet (Snappy compression) — columnar, compressed, self-describing
+- **Storage**: MinIO (`s3://bronze/crypto/assets/year=YYYY/month=MM/day=DD/assets.parquet`)
+- **Schema enforcement**: Pydantic V2 validation at ingestion time — catches API changes early
 - **Modeling**: None — this is intentional. Bronze preserves the source shape exactly,
   so we can always reprocess from scratch if our models change.
+- **Ingestion**: Single-task Airflow DAG (`bronze_coincap_assets`), daily schedule
 - **Purpose**: Immutable landing zone; source of truth for reprocessing
 
 ### Silver
