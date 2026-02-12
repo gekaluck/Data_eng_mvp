@@ -58,7 +58,7 @@ The system follows a **lakehouse-style** architecture with three layers:
 ### Storage — MinIO
 - S3-compatible object storage, runs as a Docker container
 - Acts as the "data lake" backing store for all layers
-- Paths follow: `s3a://lakehouse/bronze/...`, `s3a://lakehouse/silver/...`, `s3a://lakehouse/gold/...`
+- One bucket per layer: `s3a://bronze/...`, `s3a://silver/...`, `s3a://gold/...`
 
 ### Table Format — Apache Iceberg
 - Iceberg 1.5.x on top of Spark

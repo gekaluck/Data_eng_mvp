@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Airflow logs (bind-mounted, can be large)
+logs/
+!logs/.gitkeep
+
+# Docker volumes (if any leak locally)
+postgres-data/
+minio-data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Environment variables
+.env
+.env.*
+!.env.example

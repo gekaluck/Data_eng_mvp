@@ -189,3 +189,102 @@ milestones, not a separate task.
 - Normalization vs. denormalization: when each is appropriate and why
 - Fact vs. dimension: what's measurable vs. what's descriptive
 - Pre-aggregation: trading compute for query speed in gold
+
+---
+
+## D010 — Airflow Executor: LocalExecutor
+**Date**: 2026-02-06
+**Status**: accepted
+
+**Decision**: Use LocalExecutor instead of CeleryExecutor for Airflow.
+
+**Why**:
+- No need for Redis or a Celery worker — fewer containers, simpler setup
+- Sufficient for a single-machine learning project
+- Reduces Docker Compose from ~8 services to 6
+- Tasks run as subprocesses of the scheduler, which is fine for our volume
+
+**Alternatives considered**:
+- **CeleryExecutor**: The official Docker Compose default. Adds Redis + worker containers.
+  More realistic for production, but unnecessary overhead for learning.
+- **SequentialExecutor**: Even simpler, but can only run one task at a time.
+  Too limiting once we have multi-task DAGs.
+
+**Revisit if**: We need parallel task execution across multiple workers.
+
+---
+
+## D011 — MinIO Bucket Layout: Three Separate Buckets
+**Date**: 2026-02-06
+**Status**: accepted
+
+**Decision**: Create one MinIO bucket per data layer: `bronze`, `silver`, `gold`.
+
+**Why**:
+- Clear separation of concerns — each layer is independently visible and manageable
+- Mirrors how teams often use separate S3 buckets/prefixes in production
+- Simple to set up with `mc mb` commands
+- Paths become clean: `s3a://bronze/...`, `s3a://silver/...`, `s3a://gold/...`
+
+**Alternatives considered**:
+- **Single bucket with prefixes** (`s3a://lakehouse/bronze/...`): Simpler initial setup,
+  but less realistic and harder to apply per-bucket policies later.
+
+---
+
+## D012 — Airflow S3 Connection: Environment Variable
+**Date**: 2026-02-06
+**Status**: accepted
+
+**Decision**: Configure the MinIO/S3 connection via the `AIRFLOW_CONN_MINIO_S3` environment
+variable rather than creating it through the Airflow UI.
+
+**Why**:
+- Reproducible — connection exists automatically on every `docker compose up`
+- No manual UI steps to forget or misconfigure
+- Version-controlled alongside the rest of the infrastructure
+- Standard Airflow pattern for connection management in code
+
+**Alternatives considered**:
+- **Airflow UI**: Clickable but not reproducible. Easy to forget during fresh setup.
+- **Airflow CLI** (`airflow connections add`): Reproducible but requires a running scheduler.
+  Env var is simpler and works at container startup.
+
+---
+
+## D013 — Security: Environment Variables for Credentials
+**Date**: 2026-02-07
+**Status**: accepted
+
+**Decision**: All sensitive credentials (Fernet key, admin passwords, database passwords) 
+are managed via environment variables in a `.env` file that is excluded from version control.
+
+**Why**:
+- **Security**: Prevents hardcoded credentials from being committed to the repository
+- **Fernet key**: Required for encrypting sensitive data in the Airflow metadata database; 
+  an empty or weak key exposes stored credentials and connection strings
+- **Flexibility**: Allows different credentials for dev, staging, and production environments
+- **Standard practice**: Industry-standard approach for secrets management in containerized apps
+- **Compliance**: Helps meet security compliance requirements by separating secrets from code
+
+**Implementation**:
+- `.env` file contains actual secrets (gitignored)
+- `.env.example` provides a template that can be safely committed
+- `docker-compose.yml` references environment variables using `${VAR_NAME}` syntax
+- All default passwords have been removed from the codebase
+
+**Security Requirements**:
+- Fernet key must be a cryptographically secure 32-byte base64-encoded value
+- All passwords must be changed from defaults before production use
+- `.env` file must never be committed to version control
+- Each environment should have unique credentials
+
+**Alternatives considered**:
+- **Hardcoded values**: Simple but insecure; credentials in version control is a critical vulnerability
+- **Docker secrets**: More secure for production but adds complexity for local development
+- **External secrets manager** (HashiCorp Vault, AWS Secrets Manager): Overkill for local dev; 
+  good for production but requires additional infrastructure
+
+**Revisit if**: Moving to production deployment where a dedicated secrets management solution 
+would be more appropriate.
+
