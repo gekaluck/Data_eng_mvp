@@ -285,6 +285,106 @@ are managed via environment variables in a `.env` file that is excluded from ver
 - **External secrets manager** (HashiCorp Vault, AWS Secrets Manager): Overkill for local dev; 
   good for production but requires additional infrastructure
 
-**Revisit if**: Moving to production deployment where a dedicated secrets management solution 
+**Revisit if**: Moving to production deployment where a dedicated secrets management solution
 would be more appropriate.
+
+---
+
+## D014 — Bronze Format: Parquet (not JSON)
+**Date**: 2026-02-12
+**Status**: accepted
+
+**Decision**: Store Bronze layer data as Snappy-compressed Parquet files, not raw JSON.
+
+**Why**:
+- Columnar format — efficient for the analytical reads that downstream layers perform
+- Snappy compression gives ~5x size reduction with minimal CPU cost
+- Self-describing schema embedded in the file (no sidecar schema files needed)
+- PyArrow makes conversion trivial (3 lines of code)
+- Parquet is the standard interchange format in data lakehouse architectures
+
+**Alternatives considered**:
+- **Raw JSON**: Simpler, but larger files, slower reads, no embedded schema.
+  Would need separate schema tracking for downstream consumers.
+- **CSV**: Even worse than JSON for nested/nullable data. No type info.
+- **Avro**: Good for streaming, but Parquet is a better fit for batch analytics.
+
+---
+
+## D015 — Pydantic V2 Data Contracts at Ingestion
+**Date**: 2026-02-12
+**Status**: accepted
+
+**Decision**: Validate all API responses with Pydantic V2 models before writing to Bronze.
+
+**Why**:
+- Catches API schema changes immediately at ingestion, not days later in Silver
+- Acts as executable documentation of the expected API shape
+- Pydantic V2 is fast (Rust-based core) — negligible overhead for our data volume
+- Keeps numeric fields as strings (Bronze = raw), explicit type conversions in Silver
+
+**Alternatives considered**:
+- **No validation**: Risk silent data corruption if CoinCap changes their API
+- **JSON Schema**: More verbose, harder to maintain, not as natural in Python
+- **Pandera / Great Expectations**: Designed for DataFrames, overkill at this stage
+
+---
+
+## D016 — Single-Task Bronze DAG
+**Date**: 2026-02-12
+**Status**: accepted
+
+**Decision**: Implement the Bronze DAG as a single task (fetch + validate + upload in one function).
+
+**Why**:
+- Total payload is <100KB — splitting adds XCom serialization overhead with zero benefit
+- Fewer tasks = simpler debugging, fewer failure modes
+- If any step fails, the whole task retries cleanly (no partial state)
+- Can split later if data volume grows (YAGNI)
+
+**Alternatives considered**:
+- **Three separate tasks** (fetch → validate → upload): More "correct" DAG design,
+  but the XCom overhead and debugging complexity aren't justified for this data size.
+
+**Revisit if**: Data volume exceeds what XCom handles comfortably (~50MB).
+
+---
+
+## D017 — Pip Packages Inline in docker-compose
+**Date**: 2026-02-12
+**Status**: accepted
+
+**Decision**: Install additional Python packages via `_PIP_ADDITIONAL_REQUIREMENTS` in
+docker-compose, not via a custom Dockerfile.
+
+**Why**:
+- Simplest approach — no Dockerfile to maintain
+- Standard pattern from the official Airflow Docker guide
+- `requirements.txt` exists as documentation but is not mounted as a volume
+- Keeps the infrastructure configuration in one place
+
+**Alternatives considered**:
+- **Custom Dockerfile**: More correct for production, but adds build step complexity
+  that isn't needed for local learning
+- **Mount requirements.txt + pip install on startup**: Fragile and adds startup latency
+
+**Revisit if**: Package list grows large or we need system-level dependencies.
+
+---
+
+## D018 — Tests Run Inside Docker
+**Date**: 2026-02-12
+**Status**: accepted
+
+**Decision**: Run pytest inside the Airflow scheduler container, not on the host.
+
+**Why**:
+- All dependencies (Airflow, Pydantic, PyArrow) are already installed in the container
+- No need for a local virtual environment — reduces "works on my machine" issues
+- `./tests` volume is mounted into the container for live editing
+- `make test` wraps the command for convenience
+
+**Alternatives considered**:
+- **Local venv**: Would require installing Airflow locally (heavy, version mismatch risk)
+- **Separate test container**: More isolated, but overkill for a learning project
 
