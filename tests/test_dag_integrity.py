@@ -37,3 +37,27 @@ class TestDagIntegrity:
     def test_hello_world_dag_exists(self, dagbag):
         """The M1 hello_world DAG should still load fine."""
         assert "hello_world" in dagbag.dags
+
+    # --- Silver DAG (M3) ---
+
+    def test_silver_dag_exists(self, dagbag):
+        """The silver_coincap_assets DAG should be present."""
+        assert "silver_coincap_assets" in dagbag.dags
+
+    def test_silver_dag_has_two_tasks(self, dagbag):
+        """Silver DAG must have exactly: wait_for_bronze + run_silver_transform."""
+        dag = dagbag.dags["silver_coincap_assets"]
+        task_ids = {t.task_id for t in dag.tasks}
+        assert task_ids == {"wait_for_bronze", "run_silver_transform"}
+
+    def test_silver_dag_task_order(self, dagbag):
+        """wait_for_bronze must be upstream of run_silver_transform."""
+        dag = dagbag.dags["silver_coincap_assets"]
+        wait_task = dag.get_task("wait_for_bronze")
+        assert "run_silver_transform" in {t.task_id for t in wait_task.downstream_list}
+
+    def test_silver_dag_tags(self, dagbag):
+        """Silver DAG should be tagged for filtering in the UI."""
+        dag = dagbag.dags["silver_coincap_assets"]
+        assert "silver" in dag.tags
+        assert "coincap" in dag.tags
