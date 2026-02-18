@@ -70,17 +70,17 @@ raw data to MinIO (bronze layer).
 ---
 
 ## M3 — Silver Layer (Iceberg + Spark)
-**Status**: planned
-**Branch**: TBD
+**Status**: in progress
+**Branch**: `feat/m3-silver-layer`
 
 **Goal**: PySpark job reads bronze data, cleans/transforms it, and writes to Iceberg tables
 in the silver layer.
 
 **Deliverables**:
 - PySpark job with explicit schema definitions
-- Iceberg table creation with JDBC/SQLite catalog
-- Airflow DAG orchestrating the Spark job
-- Deduplication and type-casting logic
+- Iceberg table creation with Hadoop catalog (see D020 — simpler than JDBC/SQLite in Docker)
+- Airflow DAG orchestrating the Spark job with bronze → silver dependency
+- Type-casting, renaming (camelCase → snake_case), partition overwrite, MERGE INTO upsert
 
 **Key learning**:
 - PySpark DataFrame API: reads, transforms, writes
@@ -164,3 +164,4 @@ and documentation cleanup.
 | 2026-02-12 | M1        | Merged into main |
 | 2026-02-12 | M2        | Bronze layer: CoinCap ingestion DAG, Pydantic validation, Parquet output to MinIO |
 | 2026-02-12 | M2        | Developer tooling: Makefile, requirements.txt, pytest suite |
+| 2026-02-17 | M3        | Silver layer started: Dockerfile with Java 17, PySpark transform job, silver_coincap DAG with ExternalTaskSensor, Hadoop Iceberg catalog |

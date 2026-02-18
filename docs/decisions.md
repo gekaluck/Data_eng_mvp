@@ -388,3 +388,62 @@ docker-compose, not via a custom Dockerfile.
 - **Local venv**: Would require installing Airflow locally (heavy, version mismatch risk)
 - **Separate test container**: More isolated, but overkill for a learning project
 
+---
+
+## D019 — Custom Dockerfile for Java (PySpark)
+**Date**: 2026-02-17
+**Status**: accepted
+
+**Decision**: Add a `Dockerfile` that extends `apache/airflow:2.10.4` with OpenJDK 17 JRE.
+The `docker-compose.yml` switches from `image:` to `build: .`.
+
+**Why**:
+- PySpark requires a JVM at runtime. The official Airflow image does not include Java.
+- Java is a system-level dependency — it must come from the OS package manager, not pip.
+- A minimal Dockerfile (5 lines) keeps the change contained and easy to understand.
+- We install the JRE (not the full JDK) to keep the image size smaller.
+
+**Alternatives considered**:
+- **Pre-built image with Java** (e.g., `bitnami/airflow`): Deviates from the official image
+  we've used since M1. Introduces an unknown base with different paths and defaults.
+- **Host-level Spark** (run Spark on Windows): Requires Java + Spark installed on the host,
+  breaks the "runnable in Docker" contract, and complicates the cross-OS story.
+- **Spark in a separate container** (SparkSubmitOperator): Realistic for production, but adds
+  another service to configure. Not justified at this project's scale.
+
+**Impact on D017**: D017 said "no custom Dockerfile". This decision supersedes it for
+system-level dependencies. Python packages still go via `_PIP_ADDITIONAL_REQUIREMENTS`.
+
+---
+
+## D020 — Iceberg Catalog: Hadoop (supersedes D003)
+**Date**: 2026-02-17
+**Status**: accepted
+
+**Decision**: Use the Iceberg Hadoop catalog instead of JDBC/SQLite (D003).
+The Hadoop catalog stores table metadata as JSON files directly in MinIO under
+`s3a://silver/iceberg/<namespace>/<table>/metadata/`.
+
+**Why**:
+- D003 chose JDBC/SQLite as the "simplest" catalog, but in a Docker environment the
+  JDBC catalog adds real friction: a `sqlite-jdbc` JAR must be downloaded and placed on
+  the classpath, and the SQLite file needs a stable path across container restarts.
+- The Hadoop catalog needs only the `iceberg-spark-runtime` JAR (already required for
+  table operations). No extra JARs, no extra config, no extra volume.
+- Both catalogs teach the same Iceberg concepts: table creation, partitioning, schema
+  evolution, time travel. The catalog choice is an implementation detail, not a
+  learning objective.
+- The Hadoop catalog stores metadata in the same MinIO bucket as the data, making it
+  easy to inspect: browse `s3a://silver/iceberg/` to see exactly what Iceberg writes.
+
+**Tradeoffs vs JDBC**:
+- The Hadoop catalog does not support concurrent writes from multiple Spark sessions.
+  For a single-machine learning project with sequential daily runs, this doesn't matter.
+- If we later add multi-user or concurrent write scenarios, revisit with a REST catalog
+  (Nessie, Iceberg REST) or Hive Metastore. Those are better production choices anyway.
+
+**Alternatives considered**:
+- **JDBC/SQLite** (D003): Technically correct but harder to wire up. Revisit for M5+.
+- **REST catalog (Nessie)**: Best for production concurrent writes, but adds another
+  Docker container and configuration surface. Not worth it here.
+
