@@ -26,7 +26,7 @@ which prevents wasted effort and keeps the learning path coherent.
 ---
 
 ## M1 — Local Infrastructure
-**Status**: in progress
+**Status**: done
 **Branch**: `feat/m1-local-infra`
 
 **Goal**: Get Airflow + MinIO running locally via Docker Compose. Verify the setup works.
@@ -48,8 +48,8 @@ being up and verified. No point writing pipelines if the platform doesn't start.
 ---
 
 ## M2 — Bronze Layer (Raw Ingestion)
-**Status**: planned
-**Branch**: TBD
+**Status**: done
+**Branch**: `feat/m2-bronze-layer`
 
 **Goal**: Build the first real Airflow DAG that fetches crypto data from CoinCap and writes
 raw data to MinIO (bronze layer).
@@ -70,17 +70,17 @@ raw data to MinIO (bronze layer).
 ---
 
 ## M3 — Silver Layer (Iceberg + Spark)
-**Status**: planned
-**Branch**: TBD
+**Status**: in progress
+**Branch**: `feat/m3-silver-layer`
 
 **Goal**: PySpark job reads bronze data, cleans/transforms it, and writes to Iceberg tables
 in the silver layer.
 
 **Deliverables**:
 - PySpark job with explicit schema definitions
-- Iceberg table creation with JDBC/SQLite catalog
-- Airflow DAG orchestrating the Spark job
-- Deduplication and type-casting logic
+- Iceberg table creation with Hadoop catalog (see D020 — simpler than JDBC/SQLite in Docker)
+- Airflow DAG orchestrating the Spark job with bronze → silver dependency
+- Type-casting, renaming (camelCase → snake_case), partition overwrite, MERGE INTO upsert
 
 **Key learning**:
 - PySpark DataFrame API: reads, transforms, writes
@@ -161,3 +161,8 @@ and documentation cleanup.
 | 2026-02-06 | M0        | Created initial docs, agreed on stack & plan|
 | 2026-02-06 | M1        | Docker Compose with Airflow (LocalExecutor) + MinIO, hello_world DAG |
 | 2026-02-11 | M1        | Security hardening: environment variables for all credentials, Fernet key generation, Windows compatibility fixes |
+| 2026-02-12 | M1        | Merged into main |
+| 2026-02-12 | M2        | Bronze layer: CoinCap ingestion DAG, Pydantic validation, Parquet output to MinIO |
+| 2026-02-12 | M2        | Developer tooling: Makefile, requirements.txt, pytest suite |
+| 2026-02-17 | M3        | Silver layer started: Dockerfile with Java 17, PySpark transform job, silver_coincap DAG with ExternalTaskSensor, Hadoop Iceberg catalog |
+| 2026-03-15 | M3        | End-to-end Bronze -> Silver run verified; CoinCap integration updated to current API host/auth model |

@@ -18,22 +18,22 @@ The system follows a **lakehouse-style** architecture with three layers:
 [CoinCap API]
       |
       v
-  Airflow DAG (daily)
+  Airflow DAG (daily) — Pydantic validation → Parquet
       |
       v
-  Bronze (raw JSON/Parquet in MinIO)
+  Bronze (Parquet in MinIO, date-partitioned)
       |
       v
   PySpark job (clean, type, deduplicate)
       |
       v
-  Silver (Iceberg tables in MinIO, catalog in SQLite)
+  Silver (Iceberg tables in MinIO, Hadoop catalog metadata in MinIO)
       |
       v
   PySpark job (aggregate)
       |
       v
-  Gold (Iceberg tables in MinIO, catalog in SQLite)
+  Gold (Iceberg tables in MinIO, Hadoop catalog metadata in MinIO)
 ```
 
 ---
@@ -41,7 +41,8 @@ The system follows a **lakehouse-style** architecture with three layers:
 ## Components
 
 ### Data Source — CoinCap API
-- Public REST API, no API key required
+- REST API currently served from `rest.coincap.io`
+- Current access model requires an API key
 - Provides price, market cap, volume, and historical data for cryptocurrencies
 - We fetch daily snapshots for the top 10–20 coins by market cap
 
@@ -62,7 +63,7 @@ The system follows a **lakehouse-style** architecture with three layers:
 
 ### Table Format — Apache Iceberg
 - Iceberg 1.5.x on top of Spark
-- JDBC catalog backed by SQLite (simplest local option)
+- Hadoop catalog with metadata stored directly in MinIO
 - Used for silver and gold layers
 - Gives us: schema evolution, partition management, time travel, incremental reads
 
@@ -117,11 +118,12 @@ explain the tradeoffs as we go.
 ## Layer Definitions
 
 ### Bronze
-- **Format**: Raw JSON or Parquet (as-is from API)
-- **Storage**: MinIO, partitioned by ingestion date
-- **Schema enforcement**: None — store what we receive
+- **Format**: Parquet (Snappy compression) — columnar, compressed, self-describing
+- **Storage**: MinIO (`s3://bronze/crypto/assets/year=YYYY/month=MM/day=DD/assets.parquet`)
+- **Schema enforcement**: Pydantic V2 validation at ingestion time — catches API changes early
 - **Modeling**: None — this is intentional. Bronze preserves the source shape exactly,
   so we can always reprocess from scratch if our models change.
+- **Ingestion**: Single-task Airflow DAG (`bronze_coincap_assets`), daily schedule
 - **Purpose**: Immutable landing zone; source of truth for reprocessing
 
 ### Silver
@@ -149,7 +151,7 @@ explain the tradeoffs as we go.
 | Compute        | PySpark 3.5.x          | Local / Docker|
 | Storage        | MinIO                  | Docker        |
 | Table format   | Iceberg 1.5.x          | Spark plugin  |
-| Catalog        | JDBC (SQLite)          | Local file    |
+| Catalog        | Hadoop                 | MinIO metadata|
 | OS             | Windows + WSL2/Docker  | Host          |
 
 ---
@@ -161,7 +163,7 @@ If we later extend to AWS, the mapping would be:
 | Local           | AWS Equivalent     |
 |-----------------|--------------------|
 | MinIO           | S3                 |
-| SQLite catalog  | AWS Glue Catalog   |
+| Hadoop catalog  | AWS Glue / REST catalog |
 | PySpark (local) | EMR Serverless     |
 | Airflow (local) | MWAA or self-hosted|
 

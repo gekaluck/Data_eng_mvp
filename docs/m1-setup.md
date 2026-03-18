@@ -34,6 +34,7 @@
 
 3. **Start everything**:
    ```bash
+   docker compose build
    docker compose up -d
    ```
 
@@ -80,8 +81,10 @@ docker compose down -v
 - You can create them manually via the MinIO Console
 
 ### "Permission denied" errors in Airflow logs
-- On Linux, make sure `AIRFLOW_UID` in `.env` matches your user ID (`id -u`)
-- On Windows/WSL2, the default `50000` should work fine
+- On Linux, if you choose to run Airflow as a non-root user, make sure the mounted/log
+  directories are writable by that user.
+- On Windows, this project runs the Airflow containers as `root` in `docker-compose.yml`
+  so the shared log volume stays writable across `airflow-init`, webserver, and scheduler.
 
 ## What's Running
 

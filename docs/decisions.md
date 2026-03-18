@@ -14,6 +14,9 @@ we add a new entry referencing the old one.
 **Date**: 2026-02-06
 **Status**: accepted
 
+**Superseded in part by D021**: this original decision assumed CoinCap's public,
+unauthenticated API host.
+
 **Decision**: Use the CoinCap REST API as the primary data source.
 
 **Why**:
@@ -285,6 +288,215 @@ are managed via environment variables in a `.env` file that is excluded from ver
 - **External secrets manager** (HashiCorp Vault, AWS Secrets Manager): Overkill for local dev; 
   good for production but requires additional infrastructure
 
-**Revisit if**: Moving to production deployment where a dedicated secrets management solution 
+**Revisit if**: Moving to production deployment where a dedicated secrets management solution
 would be more appropriate.
+
+---
+
+## D014 — Bronze Format: Parquet (not JSON)
+**Date**: 2026-02-12
+**Status**: accepted
+
+**Decision**: Store Bronze layer data as Snappy-compressed Parquet files, not raw JSON.
+
+**Why**:
+- Columnar format — efficient for the analytical reads that downstream layers perform
+- Snappy compression gives ~5x size reduction with minimal CPU cost
+- Self-describing schema embedded in the file (no sidecar schema files needed)
+- PyArrow makes conversion trivial (3 lines of code)
+- Parquet is the standard interchange format in data lakehouse architectures
+
+**Alternatives considered**:
+- **Raw JSON**: Simpler, but larger files, slower reads, no embedded schema.
+  Would need separate schema tracking for downstream consumers.
+- **CSV**: Even worse than JSON for nested/nullable data. No type info.
+- **Avro**: Good for streaming, but Parquet is a better fit for batch analytics.
+
+---
+
+## D015 — Pydantic V2 Data Contracts at Ingestion
+**Date**: 2026-02-12
+**Status**: accepted
+
+**Decision**: Validate all API responses with Pydantic V2 models before writing to Bronze.
+
+**Why**:
+- Catches API schema changes immediately at ingestion, not days later in Silver
+- Acts as executable documentation of the expected API shape
+- Pydantic V2 is fast (Rust-based core) — negligible overhead for our data volume
+- Keeps numeric fields as strings (Bronze = raw), explicit type conversions in Silver
+
+**Alternatives considered**:
+- **No validation**: Risk silent data corruption if CoinCap changes their API
+- **JSON Schema**: More verbose, harder to maintain, not as natural in Python
+- **Pandera / Great Expectations**: Designed for DataFrames, overkill at this stage
+
+---
+
+## D016 — Single-Task Bronze DAG
+**Date**: 2026-02-12
+**Status**: accepted
+
+**Decision**: Implement the Bronze DAG as a single task (fetch + validate + upload in one function).
+
+**Why**:
+- Total payload is <100KB — splitting adds XCom serialization overhead with zero benefit
+- Fewer tasks = simpler debugging, fewer failure modes
+- If any step fails, the whole task retries cleanly (no partial state)
+- Can split later if data volume grows (YAGNI)
+
+**Alternatives considered**:
+- **Three separate tasks** (fetch → validate → upload): More "correct" DAG design,
+  but the XCom overhead and debugging complexity aren't justified for this data size.
+
+**Revisit if**: Data volume exceeds what XCom handles comfortably (~50MB).
+
+---
+
+## D017 — Pip Packages Inline in docker-compose
+**Date**: 2026-02-12
+**Status**: accepted
+
+**Superseded by D022**.
+
+**Decision**: Install additional Python packages via `_PIP_ADDITIONAL_REQUIREMENTS` in
+docker-compose, not via a custom Dockerfile.
+
+**Why**:
+- Simplest approach — no Dockerfile to maintain
+- Standard pattern from the official Airflow Docker guide
+- `requirements.txt` exists as documentation but is not mounted as a volume
+- Keeps the infrastructure configuration in one place
+
+**Alternatives considered**:
+- **Custom Dockerfile**: More correct for production, but adds build step complexity
+  that isn't needed for local learning
+- **Mount requirements.txt + pip install on startup**: Fragile and adds startup latency
+
+**Revisit if**: Package list grows large or we need system-level dependencies.
+
+---
+
+## D018 — Tests Run Inside Docker
+**Date**: 2026-02-12
+**Status**: accepted
+
+**Decision**: Run pytest inside the Airflow scheduler container, not on the host.
+
+**Why**:
+- All dependencies (Airflow, Pydantic, PyArrow) are already installed in the container
+- No need for a local virtual environment — reduces "works on my machine" issues
+- `./tests` volume is mounted into the container for live editing
+- `make test` wraps the command for convenience
+
+**Alternatives considered**:
+- **Local venv**: Would require installing Airflow locally (heavy, version mismatch risk)
+- **Separate test container**: More isolated, but overkill for a learning project
+
+---
+
+## D019 — Custom Dockerfile for Java (PySpark)
+**Date**: 2026-02-17
+**Status**: accepted
+
+**Decision**: Add a `Dockerfile` that extends `apache/airflow:2.10.4` with OpenJDK 17 JRE.
+The `docker-compose.yml` switches from `image:` to `build: .`.
+
+**Why**:
+- PySpark requires a JVM at runtime. The official Airflow image does not include Java.
+- Java is a system-level dependency — it must come from the OS package manager, not pip.
+- A minimal Dockerfile (5 lines) keeps the change contained and easy to understand.
+- We install the JRE (not the full JDK) to keep the image size smaller.
+
+**Alternatives considered**:
+- **Pre-built image with Java** (e.g., `bitnami/airflow`): Deviates from the official image
+  we've used since M1. Introduces an unknown base with different paths and defaults.
+- **Host-level Spark** (run Spark on Windows): Requires Java + Spark installed on the host,
+  breaks the "runnable in Docker" contract, and complicates the cross-OS story.
+- **Spark in a separate container** (SparkSubmitOperator): Realistic for production, but adds
+  another service to configure. Not justified at this project's scale.
+
+**Impact on D017**: D017 said "no custom Dockerfile". This decision supersedes it for
+system-level dependencies. D022 later superseded D017 for Python dependency installation too.
+
+---
+
+## D020 — Iceberg Catalog: Hadoop (supersedes D003)
+**Date**: 2026-02-17
+**Status**: accepted
+
+**Decision**: Use the Iceberg Hadoop catalog instead of JDBC/SQLite (D003).
+The Hadoop catalog stores table metadata as JSON files directly in MinIO under
+`s3a://silver/iceberg/<namespace>/<table>/metadata/`.
+
+**Why**:
+- D003 chose JDBC/SQLite as the "simplest" catalog, but in a Docker environment the
+  JDBC catalog adds real friction: a `sqlite-jdbc` JAR must be downloaded and placed on
+  the classpath, and the SQLite file needs a stable path across container restarts.
+- The Hadoop catalog needs only the `iceberg-spark-runtime` JAR (already required for
+  table operations). No extra JARs, no extra config, no extra volume.
+- Both catalogs teach the same Iceberg concepts: table creation, partitioning, schema
+  evolution, time travel. The catalog choice is an implementation detail, not a
+  learning objective.
+- The Hadoop catalog stores metadata in the same MinIO bucket as the data, making it
+  easy to inspect: browse `s3a://silver/iceberg/` to see exactly what Iceberg writes.
+
+**Tradeoffs vs JDBC**:
+- The Hadoop catalog does not support concurrent writes from multiple Spark sessions.
+  For a single-machine learning project with sequential daily runs, this doesn't matter.
+- If we later add multi-user or concurrent write scenarios, revisit with a REST catalog
+  (Nessie, Iceberg REST) or Hive Metastore. Those are better production choices anyway.
+
+**Alternatives considered**:
+- **JDBC/SQLite** (D003): Technically correct but harder to wire up. Revisit for M5+.
+- **REST catalog (Nessie)**: Best for production concurrent writes, but adds another
+  Docker container and configuration surface. Not worth it here.
+
+---
+
+## D021 — CoinCap API Host and Auth Refresh (supersedes part of D001)
+**Date**: 2026-03-15
+**Status**: accepted
+
+**Decision**: Update the Bronze ingestion configuration to use CoinCap's current API host
+(`rest.coincap.io`) and require an API key via environment variable.
+
+**Why**:
+- The original public host (`api.coincap.io`) no longer resolves in our environment.
+- CoinCap's current official docs and signup flow now point to an authenticated API model.
+- Keeping the host and path in environment variables makes future provider changes lower-risk.
+- An explicit `COINCAP_API_KEY` requirement fails fast and avoids confusing DNS-style errors.
+
+**Implementation**:
+- `COINCAP_API_BASE_URL` defaults to `https://rest.coincap.io/v3`
+- `COINCAP_ASSETS_PATH` defaults to `/assets`
+- `COINCAP_API_KEY` is passed into the Airflow containers and sent as a bearer token
+- Bronze retries transient HTTP failures and raises a clearer infrastructure/config error
+
+**Alternatives considered**:
+- **Keep `api.coincap.io` hardcoded**: No longer viable; the host is retired or inaccessible.
+- **Switch providers immediately**: Reasonable fallback, but unnecessary while CoinCap still
+  offers the required asset endpoint.
+- **Hardcode the new host in Python only**: Works short-term, but makes future provider changes
+  harder than an env-driven configuration.
+
+---
+
+## D022 — Install Python Dependencies at Image Build Time (supersedes D017)
+**Date**: 2026-03-15
+**Status**: accepted
+
+**Decision**: Install Python dependencies from `requirements.txt` during the Docker image
+build, not via `_PIP_ADDITIONAL_REQUIREMENTS` at container startup.
+
+**Why**:
+- We already maintain a custom Dockerfile for Java, so build-time Python deps fit the current model.
+- Startup-time installs make container boot slower and less predictable.
+- Build-time installation makes test and runtime environments match more closely.
+- The current repo already uses `requirements.txt` as the authoritative dependency list.
+
+**Alternatives considered**:
+- **Keep `_PIP_ADDITIONAL_REQUIREMENTS`**: Simpler initially, but less reproducible and slower at startup.
+- **Install deps manually inside running containers**: Fragile and not reproducible.
+- **Separate test image**: More isolation, but unnecessary for a local learning project.
 

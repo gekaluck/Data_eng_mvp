@@ -10,7 +10,10 @@
 # Shared Airflow configuration (YAML anchor — keeps things DRY)
 # ---------------------------------------------------------------------------
 x-airflow-common: &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.4}
+  # M3: switched from image: to build: so we can add Java (required by PySpark).
+  # First run or after Dockerfile changes: docker compose build (or make build)
+  build: .
+  image: data-eng-mvp-airflow:latest
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
@@ -18,11 +21,16 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-amazon}
 
     # MinIO credentials for DAGs to use
     MINIO_ROOT_USER: ${MINIO_ROOT_USER}
     MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    COINCAP_API_BASE_URL: ${COINCAP_API_BASE_URL:-https://rest.coincap.io/v3}
+    COINCAP_ASSETS_PATH: ${COINCAP_ASSETS_PATH:-/assets}
+    COINCAP_API_KEY: ${COINCAP_API_KEY:-}
+
+    # MinIO endpoint — used by the silver PySpark job to configure S3A
+    MINIO_ENDPOINT: "http://minio:9000"
 
     # MinIO S3 connection — set via env var so it's reproducible (no UI clicks needed)
     # Format: aws://<access_key>:<secret_key>@?host=http://minio:9000&extra__aws__endpoint_url=http://minio:9000
@@ -33,7 +41,12 @@ x-airflow-common: &airflow-common
     - airflow-logs:/opt/airflow/logs
     - ./config:/opt/airflow/config
     - ./plugins:/opt/airflow/plugins
-  user: "0:0"  # Run as root for Windows compatibility
+    - ./tests:/opt/airflow/tests
+    - ./spark:/opt/airflow/spark         # PySpark jobs (M3+)
+    - spark-ivy-cache:/opt/spark-ivy     # Iceberg/S3A JAR cache — persists across restarts
+  # Keep Airflow running as root on Windows so the named log volume stays writable
+  # across init/webserver/scheduler containers.
+  user: "0:0"
   depends_on:
     postgres:
       condition: service_healthy
@@ -150,7 +163,7 @@ services:
     <<: *airflow-common
     command: scheduler
     healthcheck:
-      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--hostname", "$${HOSTNAME}"]
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--local"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -167,3 +180,4 @@ volumes:
   postgres-data:
   minio-data:
   airflow-logs:
+  spark-ivy-cache:    # Caches Iceberg/S3A JARs so they survive container restarts

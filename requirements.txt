@@ -1,0 +1,9 @@
+# Data Engineering MVP - Python dependencies
+# Installed in the custom Airflow Docker image at build time.
+
+apache-airflow-providers-amazon
+pydantic
+pyarrow
+requests
+pytest
+pyspark==3.5.3
