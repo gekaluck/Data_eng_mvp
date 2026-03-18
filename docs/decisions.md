@@ -14,6 +14,9 @@ we add a new entry referencing the old one.
 **Date**: 2026-02-06
 **Status**: accepted
 
+**Superseded in part by D021**: this original decision assumed CoinCap's public,
+unauthenticated API host.
+
 **Decision**: Use the CoinCap REST API as the primary data source.
 
 **Why**:
@@ -354,6 +357,8 @@ would be more appropriate.
 **Date**: 2026-02-12
 **Status**: accepted
 
+**Superseded by D022**.
+
 **Decision**: Install additional Python packages via `_PIP_ADDITIONAL_REQUIREMENTS` in
 docker-compose, not via a custom Dockerfile.
 
@@ -412,7 +417,7 @@ The `docker-compose.yml` switches from `image:` to `build: .`.
   another service to configure. Not justified at this project's scale.
 
 **Impact on D017**: D017 said "no custom Dockerfile". This decision supersedes it for
-system-level dependencies. Python packages still go via `_PIP_ADDITIONAL_REQUIREMENTS`.
+system-level dependencies. D022 later superseded D017 for Python dependency installation too.
 
 ---
 
@@ -446,4 +451,52 @@ The Hadoop catalog stores table metadata as JSON files directly in MinIO under
 - **JDBC/SQLite** (D003): Technically correct but harder to wire up. Revisit for M5+.
 - **REST catalog (Nessie)**: Best for production concurrent writes, but adds another
   Docker container and configuration surface. Not worth it here.
+
+---
+
+## D021 — CoinCap API Host and Auth Refresh (supersedes part of D001)
+**Date**: 2026-03-15
+**Status**: accepted
+
+**Decision**: Update the Bronze ingestion configuration to use CoinCap's current API host
+(`rest.coincap.io`) and require an API key via environment variable.
+
+**Why**:
+- The original public host (`api.coincap.io`) no longer resolves in our environment.
+- CoinCap's current official docs and signup flow now point to an authenticated API model.
+- Keeping the host and path in environment variables makes future provider changes lower-risk.
+- An explicit `COINCAP_API_KEY` requirement fails fast and avoids confusing DNS-style errors.
+
+**Implementation**:
+- `COINCAP_API_BASE_URL` defaults to `https://rest.coincap.io/v3`
+- `COINCAP_ASSETS_PATH` defaults to `/assets`
+- `COINCAP_API_KEY` is passed into the Airflow containers and sent as a bearer token
+- Bronze retries transient HTTP failures and raises a clearer infrastructure/config error
+
+**Alternatives considered**:
+- **Keep `api.coincap.io` hardcoded**: No longer viable; the host is retired or inaccessible.
+- **Switch providers immediately**: Reasonable fallback, but unnecessary while CoinCap still
+  offers the required asset endpoint.
+- **Hardcode the new host in Python only**: Works short-term, but makes future provider changes
+  harder than an env-driven configuration.
+
+---
+
+## D022 — Install Python Dependencies at Image Build Time (supersedes D017)
+**Date**: 2026-03-15
+**Status**: accepted
+
+**Decision**: Install Python dependencies from `requirements.txt` during the Docker image
+build, not via `_PIP_ADDITIONAL_REQUIREMENTS` at container startup.
+
+**Why**:
+- We already maintain a custom Dockerfile for Java, so build-time Python deps fit the current model.
+- Startup-time installs make container boot slower and less predictable.
+- Build-time installation makes test and runtime environments match more closely.
+- The current repo already uses `requirements.txt` as the authoritative dependency list.
+
+**Alternatives considered**:
+- **Keep `_PIP_ADDITIONAL_REQUIREMENTS`**: Simpler initially, but less reproducible and slower at startup.
+- **Install deps manually inside running containers**: Fragile and not reproducible.
+- **Separate test image**: More isolation, but unnecessary for a local learning project.
 

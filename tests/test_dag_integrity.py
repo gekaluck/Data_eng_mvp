@@ -28,6 +28,11 @@ class TestDagIntegrity:
         dag = dagbag.dags["bronze_coincap_assets"]
         assert len(dag.tasks) == 1
 
+    def test_bronze_dag_has_target_date_param(self, dagbag):
+        """Bronze DAG should expose a manual target_date override."""
+        dag = dagbag.dags["bronze_coincap_assets"]
+        assert "target_date" in dag.params
+
     def test_bronze_dag_tags(self, dagbag):
         """DAG should be tagged for filtering in the UI."""
         dag = dagbag.dags["bronze_coincap_assets"]
@@ -55,6 +60,11 @@ class TestDagIntegrity:
         dag = dagbag.dags["silver_coincap_assets"]
         wait_task = dag.get_task("wait_for_bronze")
         assert "run_silver_transform" in {t.task_id for t in wait_task.downstream_list}
+
+    def test_silver_dag_has_target_date_param(self, dagbag):
+        """Silver DAG should expose a manual target_date override."""
+        dag = dagbag.dags["silver_coincap_assets"]
+        assert "target_date" in dag.params
 
     def test_silver_dag_tags(self, dagbag):
         """Silver DAG should be tagged for filtering in the UI."""

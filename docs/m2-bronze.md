@@ -10,6 +10,10 @@ A daily Airflow DAG (`bronze_coincap_assets`) that:
 
 Also added: Makefile, requirements.txt, pytest test suite.
 
+Current note: CoinCap's public API host changed after M2. The DAG is now configured via
+`COINCAP_API_BASE_URL`, `COINCAP_ASSETS_PATH`, and `COINCAP_API_KEY` so local runs can use
+the current `rest.coincap.io` API instead of the retired `api.coincap.io` host.
+
 ---
 
 ## Files Added/Modified
@@ -17,7 +21,7 @@ Also added: Makefile, requirements.txt, pytest test suite.
 | File | Purpose |
 |------|---------|
 | `requirements.txt` | Central dependency list |
-| `docker-compose.yml` | Added pip packages + tests volume mount |
+| `docker-compose.yml` | Airflow runtime config, tests volume mount, CoinCap env wiring |
 | `dags/schemas/coincap.py` | Pydantic V2 models for CoinCap API |
 | `dags/bronze_coincap.py` | Bronze ingestion DAG |
 | `tests/test_schemas.py` | Pydantic model unit tests |
@@ -29,11 +33,15 @@ Also added: Makefile, requirements.txt, pytest test suite.
 
 ## How to Verify
 
-### 1. Restart with new dependencies
+### 1. Recreate services after config changes
 ```bash
-make restart
-# Wait ~60s for pip install to finish
+docker compose up -d --force-recreate
 ```
+
+Before triggering Bronze, make sure `.env` includes a valid CoinCap API key.
+The current docs/signup flow are:
+- `https://rest.coincap.io/api-docs`
+- `https://splash.coincap.io/`
 
 ### 2. Check for DAG import errors
 ```bash
@@ -45,6 +53,8 @@ make logs-scheduler
 - Open http://localhost:8080
 - `bronze_coincap_assets` should appear in the DAG list
 - Trigger it manually (play button)
+- Optional: set `target_date` in the trigger form (`YYYY-MM-DD`) to write Bronze data for a
+  specific partition date during manual testing
 - Task should turn green
 
 ### 4. Verify in MinIO

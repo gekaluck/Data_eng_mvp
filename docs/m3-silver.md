@@ -17,8 +17,8 @@ two Iceberg tables in the silver layer:
 - Fields: coin_id, snapshot_date, price_usd, market_cap_usd, volume_usd_24hr,
   change_percent_24hr, vwap_24hr
 
-The Airflow DAG (`silver_coincap_assets`) uses an `ExternalTaskSensor` to wait for the
-bronze DAG to finish before starting the transform.
+The Airflow DAG (`silver_coincap_assets`) waits for the expected Bronze file for the
+target date to appear in MinIO before starting the transform.
 
 ---
 
@@ -27,9 +27,9 @@ bronze DAG to finish before starting the transform.
 | File | Purpose |
 |------|---------|
 | `Dockerfile` | Extends apache/airflow with OpenJDK 17 JRE (PySpark needs a JVM) |
-| `docker-compose.yml` | Switched to `build: .`, added pyspark to pip deps, spark/ volume, JAR cache volume |
+| `docker-compose.yml` | Switched to `build: .`, added CoinCap env passthrough, spark/ volume, JAR cache volume |
 | `spark/silver_transform.py` | PySpark job: reads bronze → writes two Iceberg silver tables |
-| `dags/silver_coincap.py` | Airflow DAG: ExternalTaskSensor + subprocess PySpark call |
+| `dags/silver_coincap.py` | Airflow DAG: Bronze-file sensor + subprocess PySpark call |
 | `tests/test_dag_integrity.py` | Added silver DAG integrity tests |
 | `requirements.txt` | Added `pyspark==3.5.3` |
 | `docs/decisions.md` | Added D019 (custom Dockerfile), D020 (Hadoop catalog) |
@@ -48,17 +48,20 @@ make build
 ### 2. Start services
 ```bash
 make restart
-# Wait ~90s for pip install (pyspark is large)
+# Use `docker compose up -d --force-recreate` after only changing .env values
 ```
 
 ### 3. Trigger the bronze DAG first
 - Open http://localhost:8080
+- Make sure `.env` contains a valid `COINCAP_API_KEY`
 - Trigger `bronze_coincap_assets` manually
+- Optional: set `target_date` (`YYYY-MM-DD`) in the trigger form for a manual backfill-style run
 - Wait for it to go green (check MinIO at http://localhost:9001 to confirm Parquet landed)
 
 ### 4. Trigger the silver DAG
-- Trigger `silver_coincap_assets` manually for the same date
-- `wait_for_bronze` sensor will turn green immediately (bronze already done)
+- Trigger `silver_coincap_assets` manually for the same target date
+- Optional: set the same `target_date` (`YYYY-MM-DD`) in the trigger form
+- `wait_for_bronze` will turn green when the expected Bronze file exists for that date
 - `run_silver_transform` will start Spark — first run downloads ~300MB of JARs, takes a few minutes
 - Subsequent runs use the cached JARs (much faster)
 
@@ -104,6 +107,7 @@ one grain, and one clear answer to "what does one row represent?"
 - **Custom Dockerfile** (D019): Java is a system dep, needs apt-get not pip
 - **MERGE INTO for coins**: Shows the upsert pattern — important for slowly-changing dimensions
 - **overwritePartitions() for snapshots**: Idempotent daily writes without touching other partitions
+- **Date-based manual runs**: `target_date` makes manual Bronze/Silver runs line up with the same partition
 - **subprocess for Spark**: Isolates JVM lifecycle; mirrors how SparkSubmitOperator works
 
 ---

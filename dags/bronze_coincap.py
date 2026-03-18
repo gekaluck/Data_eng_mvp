@@ -4,7 +4,7 @@ Single-task DAG: the payload is <100KB so splitting into multiple tasks
 would add XCom overhead with no real benefit.
 
 Flow:
-  1. GET /v2/assets?limit=20 from CoinCap API
+  1. GET /assets?limit=20 from the configured CoinCap API base URL
   2. Validate response with Pydantic
   3. Convert to Parquet (Snappy compression)
   4. Upload to MinIO: bronze/crypto/assets/year=YYYY/month=MM/day=DD/assets.parquet
@@ -14,19 +14,25 @@ Uses logical_date for deterministic partitioning (idempotent reruns).
 
 import io
 import logging
+import os
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import requests
 from airflow.decorators import dag, task
+from airflow.models.param import Param
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
-from pendulum import datetime
+from pendulum import datetime, duration
 
 from schemas.coincap import CoinCapAssetsResponse
+from utils.run_dates import bronze_assets_key, resolve_target_date
 
 logger = logging.getLogger(__name__)
 
-COINCAP_URL = "https://api.coincap.io/v2/assets"
+COINCAP_API_BASE_URL = os.getenv("COINCAP_API_BASE_URL", "https://rest.coincap.io/v3").rstrip("/")
+COINCAP_ASSETS_PATH = os.getenv("COINCAP_ASSETS_PATH", "/assets")
+COINCAP_URL = f"{COINCAP_API_BASE_URL}{COINCAP_ASSETS_PATH}"
+COINCAP_API_KEY = os.getenv("COINCAP_API_KEY", "").strip()
 COINCAP_LIMIT = 20
 BRONZE_BUCKET = "bronze"
 S3_CONN_ID = "minio_s3"
@@ -38,6 +44,18 @@ S3_CONN_ID = "minio_s3"
     schedule="@daily",
     start_date=datetime(2025, 1, 1),
     catchup=False,
+    params={
+        "target_date": Param(
+            default=None,
+            type=["null", "string"],
+            description="Optional YYYY-MM-DD override for manual runs.",
+        )
+    },
+    default_args={
+        "retries": 3,
+        "retry_delay": duration(minutes=2),
+        "retry_exponential_backoff": True,
+    },
     tags=["bronze", "coincap"],
 )
 def bronze_coincap_assets():
@@ -45,17 +63,38 @@ def bronze_coincap_assets():
     @task()
     def fetch_validate_upload(**context):
         """Fetch from CoinCap, validate with Pydantic, write Parquet to MinIO."""
-        logical_date = context["logical_date"]
+        target_date = resolve_target_date(context)
+        headers = {}
+
+        if COINCAP_API_KEY:
+            headers["Authorization"] = f"Bearer {COINCAP_API_KEY}"
+        elif "rest.coincap.io" in COINCAP_API_BASE_URL:
+            raise RuntimeError(
+                "COINCAP_API_KEY is required for the current CoinCap API. "
+                "Set it in .env before running bronze_coincap_assets."
+            )
 
         # --- Step 1: Fetch from API ---
-        logger.info("Fetching top %d assets from CoinCap", COINCAP_LIMIT)
-        response = requests.get(
+        logger.info(
+            "Fetching top %d assets from CoinCap: %s (target_date=%s)",
+            COINCAP_LIMIT,
             COINCAP_URL,
-            params={"limit": COINCAP_LIMIT},
-            timeout=30,
+            target_date,
         )
-        response.raise_for_status()
-        raw_json = response.json()
+        try:
+            response = requests.get(
+                COINCAP_URL,
+                params={"limit": COINCAP_LIMIT},
+                headers=headers,
+                timeout=30,
+            )
+            response.raise_for_status()
+            raw_json = response.json()
+        except requests.exceptions.RequestException as exc:
+            raise RuntimeError(
+                "CoinCap fetch failed. This is usually an upstream connectivity issue "
+                f"(URL: {COINCAP_URL}). Check host/container DNS and outbound network access."
+            ) from exc
 
         # --- Step 2: Validate with Pydantic ---
         validated = CoinCapAssetsResponse.model_validate(raw_json)
@@ -71,13 +110,7 @@ def bronze_coincap_assets():
         logger.info("Parquet size: %d bytes", len(parquet_bytes))
 
         # --- Step 4: Upload to MinIO ---
-        s3_key = (
-            f"crypto/assets/"
-            f"year={logical_date.year}/"
-            f"month={logical_date.month:02d}/"
-            f"day={logical_date.day:02d}/"
-            f"assets.parquet"
-        )
+        s3_key = bronze_assets_key(target_date)
         hook = S3Hook(aws_conn_id=S3_CONN_ID)
         hook.load_bytes(
             bytes_data=parquet_bytes,

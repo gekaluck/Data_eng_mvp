@@ -10,7 +10,8 @@ runs the PySpark silver_transform.py job that:
        - silver.crypto.price_snapshots  (daily facts, partitioned by date)
 
 Key Airflow patterns demonstrated:
-  - ExternalTaskSensor: how to express cross-DAG dependencies
+  - PythonSensor: how to wait on a concrete Bronze artifact instead of matching
+    Airflow run timestamps
   - mode="reschedule": sensor releases the worker slot while waiting,
     so the scheduler can run other tasks instead of blocking a worker
   - subprocess execution: SparkSession runs in an isolated subprocess,
@@ -23,10 +24,35 @@ import subprocess
 import sys
 
 from airflow.decorators import dag, task
-from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.models.param import Param
+from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from airflow.sensors.python import PythonSensor
 from pendulum import datetime
 
+from utils.run_dates import bronze_assets_key, resolve_target_date
+
 logger = logging.getLogger(__name__)
+BRONZE_BUCKET = "bronze"
+S3_CONN_ID = "minio_s3"
+
+
+def bronze_partition_exists(**context) -> bool:
+    """Return True when the expected Bronze file exists for this run's target date."""
+    target_date = resolve_target_date(context)
+    s3_key = bronze_assets_key(target_date)
+
+    exists = S3Hook(aws_conn_id=S3_CONN_ID).check_for_key(
+        key=s3_key,
+        bucket_name=BRONZE_BUCKET,
+    )
+    logger.info(
+        "Checking Bronze partition for target_date=%s at s3://%s/%s -> exists=%s",
+        target_date,
+        BRONZE_BUCKET,
+        s3_key,
+        exists,
+    )
+    return exists
 
 
 @dag(
@@ -35,17 +61,23 @@ logger = logging.getLogger(__name__)
     schedule="@daily",
     start_date=datetime(2025, 1, 1),
     catchup=False,
+    params={
+        "target_date": Param(
+            default=None,
+            type=["null", "string"],
+            description="Optional YYYY-MM-DD override for manual runs.",
+        )
+    },
     tags=["silver", "coincap"],
 )
 def silver_coincap_assets():
 
-    # Wait for the bronze DAG to complete for the same execution date.
-    # mode="reschedule": the sensor sleeps between checks, freeing the worker
-    # slot. This is better than mode="poke" which holds the slot the entire time.
-    wait_for_bronze = ExternalTaskSensor(
+    # Wait for the Bronze file for this run's target date to exist in MinIO.
+    # This keeps scheduled runs aligned while also making manual runs work even
+    # when Bronze and Silver are triggered at different timestamps.
+    wait_for_bronze = PythonSensor(
         task_id="wait_for_bronze",
-        external_dag_id="bronze_coincap_assets",
-        external_task_id="fetch_validate_upload",
+        python_callable=bronze_partition_exists,
         mode="reschedule",
         timeout=3600,       # give up after 1 hour if bronze never finishes
         poke_interval=60,   # check every 60 seconds
@@ -61,8 +93,8 @@ def silver_coincap_assets():
         - Mirrors how SparkSubmitOperator works in production setups
         - Avoids any risk of SparkContext conflicts with the Airflow worker
         """
-        logical_date = context["logical_date"]
-        logical_date_str = logical_date.strftime("%Y-%m-%d")
+        target_date = resolve_target_date(context)
+        logical_date_str = target_date.strftime("%Y-%m-%d")
 
         logger.info("Starting silver transform for %s", logical_date_str)
 

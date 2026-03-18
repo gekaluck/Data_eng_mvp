@@ -165,3 +165,4 @@ and documentation cleanup.
 | 2026-02-12 | M2        | Bronze layer: CoinCap ingestion DAG, Pydantic validation, Parquet output to MinIO |
 | 2026-02-12 | M2        | Developer tooling: Makefile, requirements.txt, pytest suite |
 | 2026-02-17 | M3        | Silver layer started: Dockerfile with Java 17, PySpark transform job, silver_coincap DAG with ExternalTaskSensor, Hadoop Iceberg catalog |
+| 2026-03-15 | M3        | End-to-end Bronze -> Silver run verified; CoinCap integration updated to current API host/auth model |
