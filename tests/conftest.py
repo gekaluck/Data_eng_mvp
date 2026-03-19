@@ -1,10 +1,13 @@
-"""Pytest configuration — adds dags/ to sys.path so schemas are importable."""
+"""Pytest configuration for DAG and Spark test modules."""
 
 import sys
 from pathlib import Path
 
-# Allow imports like `from schemas.coincap import ...` in tests,
-# mirroring how Airflow resolves imports inside the container.
-dags_dir = str(Path(__file__).resolve().parent.parent / "dags")
-if dags_dir not in sys.path:
-    sys.path.insert(0, dags_dir)
+
+repo_root = Path(__file__).resolve().parent.parent
+dags_dir = repo_root / "dags"
+
+for path in (repo_root, dags_dir):
+    path_str = str(path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
