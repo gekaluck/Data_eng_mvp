@@ -27,7 +27,11 @@ x-airflow-common: &airflow-common
     MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     COINCAP_API_BASE_URL: ${COINCAP_API_BASE_URL:-https://rest.coincap.io/v3}
     COINCAP_ASSETS_PATH: ${COINCAP_ASSETS_PATH:-/assets}
+    COINCAP_ASSET_HISTORY_PATH_TEMPLATE: ${COINCAP_ASSET_HISTORY_PATH_TEMPLATE:-/assets/{id}/history}
+    COINCAP_ASSET_MARKETCAP_HISTORY_PATH_TEMPLATE: ${COINCAP_ASSET_MARKETCAP_HISTORY_PATH_TEMPLATE:-/assets/{id}/marketcap-history}
+    COINCAP_TOTAL_MARKETCAP_HISTORY_PATH: ${COINCAP_TOTAL_MARKETCAP_HISTORY_PATH:-/assets/totals/total-marketcap-history}
     COINCAP_API_KEY: ${COINCAP_API_KEY:-}
+    PYTHONPATH: /opt/airflow:/opt/airflow/dags
 
     # MinIO endpoint — used by the silver PySpark job to configure S3A
     MINIO_ENDPOINT: "http://minio:9000"
@@ -40,6 +44,7 @@ x-airflow-common: &airflow-common
     - ./dags:/opt/airflow/dags
     - airflow-logs:/opt/airflow/logs
     - ./config:/opt/airflow/config
+    - ./notebooks:/opt/airflow/notebooks
     - ./plugins:/opt/airflow/plugins
     - ./tests:/opt/airflow/tests
     - ./spark:/opt/airflow/spark         # PySpark jobs (M3+)
@@ -172,6 +177,35 @@ services:
     depends_on:
       airflow-init:
         condition: service_completed_successfully
+
+  # -------------------------------------------------------------------------
+  # JupyterLab - interactive SQL/table browsing over the local Iceberg catalogs
+  # -------------------------------------------------------------------------
+  jupyter-lab:
+    <<: *airflow-common
+    user: "${AIRFLOW_UID:-50000}:0"
+    working_dir: /opt/airflow
+    command: >
+      bash -lc "python -m jupyterlab
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --ServerApp.token=${JUPYTER_TOKEN:-data-eng-mvp}
+      --ServerApp.password=''
+      --ServerApp.allow_origin='*'
+      --ServerApp.root_dir=/opt/airflow"
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8888/lab"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      minio:
+        condition: service_healthy
 
 # ---------------------------------------------------------------------------
 # Named volumes (persist data across restarts)

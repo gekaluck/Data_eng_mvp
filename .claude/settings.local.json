@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr create:*)",
+      "Bash(git rebase:*)",
+      "Bash(gh pr view:*)",
+      "Bash(git pull:*)",
+      "WebFetch(domain:airflow.apache.org)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:blog.min.io)",
+      "Bash(git -C \"C:\\\\Repos\\\\Data_eng_mvp\" log --oneline -20)",
+      "WebFetch(domain:docs.coincap.io)",
+      "WebFetch(domain:api.coincap.io)",
+      "WebFetch(domain:pro.coincap.io)",
+      "WebFetch(domain:coincapapi.mintlify.app)",
+      "Bash(curl:*)",
+      "Bash(python -m json.tool:*)",
+      "WebFetch(domain:hexdocs.pm)",
+      "WebFetch(domain:medium.com)",
+      "Bash(git fetch:*)",
+      "Bash(gh pr list:*)",
+      "Bash(python3:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(where:*)",
+      "Bash(where.exe:*)",
+      "Bash(dir:*)",
+      "Bash(git branch:*)"
+    ]
+  }
+}
