@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 import requests
 from airflow.decorators import dag, task
 from airflow.models.param import Param
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from pendulum import datetime, duration
 
@@ -153,7 +154,6 @@ def _extract_backfill_plan(stdout: str, stderr: str) -> dict:
     tags=["bronze", "coincap", "backfill"],
 )
 def bronze_coincap_history_backfill():
-
     @task()
     def discover_backfill_plan(**context):
         """Read current Silver state and return the fixed backfill plan."""
@@ -306,7 +306,16 @@ def bronze_coincap_history_backfill():
             ),
         )
 
-    fetch_validate_upload_history(discover_backfill_plan())
+    plan = discover_backfill_plan()
+    bronze_backfill = fetch_validate_upload_history(plan)
+    trigger_silver_backfill = TriggerDagRunOperator(
+        task_id="trigger_silver_history_backfill",
+        trigger_dag_id="silver_coincap_history_backfill",
+        conf=plan,
+        wait_for_completion=False,
+    )
+
+    plan >> bronze_backfill >> trigger_silver_backfill
 
 
 bronze_coincap_history_backfill()

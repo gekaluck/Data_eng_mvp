@@ -34,6 +34,26 @@ def validate_envvars(envvars: dict[str, str]) -> None:
         )
 
 
+def _require_triggered_backfill_plan(context) -> dict:
+    """Read the resolved backfill plan from dag_run.conf."""
+    dag_run = context.get("dag_run")
+    conf = getattr(dag_run, "conf", None) or {}
+    required_keys = {
+        "coin_ids",
+        "anchor_snapshot_date",
+        "backfill_days",
+        "window_start_date",
+        "window_end_date",
+    }
+    missing_keys = sorted(required_keys - set(conf))
+    if missing_keys:
+        raise ValueError(
+            "silver_coincap_history_backfill requires a resolved backfill plan in dag_run.conf. "
+            f"Missing keys: {', '.join(missing_keys)}"
+        )
+    return conf
+
+
 def bronze_history_backfill_exists(plan: dict, **_context) -> bool:
     """Return True when all expected Bronze history backfill files exist."""
     anchor_snapshot_date = stdlib_datetime.strptime(
@@ -92,22 +112,7 @@ def _extract_backfill_plan(stdout: str, stderr: str) -> dict:
     schedule=None,
     start_date=datetime(2025, 1, 1),
     catchup=False,
-    params={
-        "anchor_snapshot_date": Param(
-            default=None,
-            type=["null", "string"],
-            description=(
-                "Optional YYYY-MM-DD anchor date. Defaults to the earliest "
-                "silver.crypto.price_snapshots date at runtime."
-            ),
-        ),
-        "backfill_days": Param(
-            default=60,
-            type="integer",
-            minimum=1,
-            description="Number of days to load before the anchor date.",
-        ),
-    },
+    params={},
     default_args={
         "retries": 2,
         "retry_delay": duration(seconds=30),
@@ -118,35 +123,19 @@ def _extract_backfill_plan(stdout: str, stderr: str) -> dict:
 def silver_coincap_history_backfill():
 
     @task()
-    def discover_backfill_plan(**context):
-        """Read current Silver state and return the fixed backfill plan."""
-        anchor_snapshot_date = resolve_optional_date_param(context, "anchor_snapshot_date")
-        backfill_days = resolve_int_param(context, "backfill_days", default=60)
-
-        result = subprocess.run(
-            [
-                sys.executable,
-                "/opt/airflow/spark/silver_backfill_plan.py",
-                anchor_snapshot_date.isoformat() if anchor_snapshot_date else "auto",
-                str(backfill_days),
-            ],
-            env=os.environ.copy(),
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=600,
+    def load_triggered_backfill_plan(**context):
+        """Read the Bronze-resolved backfill plan from dag_run.conf."""
+        plan = _require_triggered_backfill_plan(context)
+        logger.info(
+            "Loaded triggered backfill plan: anchor=%s window=%s..%s coins=%d",
+            plan["anchor_snapshot_date"],
+            plan["window_start_date"],
+            plan["window_end_date"],
+            len(plan["coin_ids"]),
         )
-        if result.stdout:
-            logger.info("Backfill plan stdout:\n%s", result.stdout)
-        if result.stderr:
-            logger.warning("Backfill plan stderr:\n%s", result.stderr)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"silver_backfill_plan.py failed with exit code {result.returncode}"
-            )
-        return _extract_backfill_plan(result.stdout, result.stderr)
+        return plan
 
-    plan = discover_backfill_plan()
+    plan = load_triggered_backfill_plan()
 
     wait_for_bronze = PythonSensor(
         task_id="wait_for_bronze_history_backfill",

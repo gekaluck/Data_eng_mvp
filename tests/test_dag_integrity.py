@@ -44,10 +44,14 @@ class TestDagIntegrity:
         assert "bronze_coincap_history_backfill" in dagbag.dags
 
     def test_bronze_history_backfill_dag_tasks(self, dagbag):
-        """Bronze history backfill DAG should plan first, then fetch/upload."""
+        """Bronze history backfill DAG should plan, fetch/upload, then trigger Silver."""
         dag = dagbag.dags["bronze_coincap_history_backfill"]
         task_ids = {t.task_id for t in dag.tasks}
-        assert task_ids == {"discover_backfill_plan", "fetch_validate_upload_history"}
+        assert task_ids == {
+            "discover_backfill_plan",
+            "fetch_validate_upload_history",
+            "trigger_silver_history_backfill",
+        }
 
     def test_bronze_history_backfill_dag_params(self, dagbag):
         """Bronze history backfill DAG should expose anchor and day-count params."""
@@ -100,11 +104,11 @@ class TestDagIntegrity:
         assert "silver_coincap_history_backfill" in dagbag.dags
 
     def test_silver_history_backfill_dag_tasks(self, dagbag):
-        """Silver history backfill DAG must wait for Bronze before Spark runs."""
+        """Silver history backfill DAG must load a triggered plan, then wait, then run Spark."""
         dag = dagbag.dags["silver_coincap_history_backfill"]
         task_ids = {t.task_id for t in dag.tasks}
         assert task_ids == {
-            "discover_backfill_plan",
+            "load_triggered_backfill_plan",
             "wait_for_bronze_history_backfill",
             "run_silver_history_backfill",
         }
@@ -117,11 +121,10 @@ class TestDagIntegrity:
             t.task_id for t in wait_task.downstream_list
         }
 
-    def test_silver_history_backfill_dag_params(self, dagbag):
-        """Silver history backfill DAG should expose anchor and day-count params."""
+    def test_silver_history_backfill_dag_has_no_manual_params(self, dagbag):
+        """Silver history backfill DAG should consume the Bronze-resolved plan via conf."""
         dag = dagbag.dags["silver_coincap_history_backfill"]
-        assert "anchor_snapshot_date" in dag.params
-        assert "backfill_days" in dag.params
+        assert dag.params == {}
 
     def test_silver_history_backfill_dag_tags(self, dagbag):
         """Silver history backfill DAG should be tagged for filtering in the UI."""
