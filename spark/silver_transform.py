@@ -125,6 +125,27 @@ def _create_tables_if_not_exist(
         """
     )
 
+    spark.sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {catalog_name}.crypto.asset_market_cap_history (
+            coin_id STRING NOT NULL COMMENT 'FK to crypto.coins.id',
+            snapshot_date DATE NOT NULL COMMENT 'Calendar date of the history point',
+            market_cap_usd DOUBLE COMMENT 'Asset market cap in USD'
+        ) USING iceberg
+        PARTITIONED BY (snapshot_date)
+        """
+    )
+
+    spark.sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {catalog_name}.crypto.total_market_cap_history (
+            snapshot_date DATE NOT NULL COMMENT 'Calendar date of the history point',
+            total_market_cap_usd DOUBLE COMMENT 'Total crypto market cap in USD'
+        ) USING iceberg
+        PARTITIONED BY (snapshot_date)
+        """
+    )
+
 
 def read_bronze(
     spark: SparkSession,

@@ -5,7 +5,7 @@
 # Run `make help` to see all available targets.
 # =============================================================================
 
-.PHONY: build up down restart ps logs logs-scheduler test test-schemas test-dag clean help
+.PHONY: build up down restart ps logs logs-scheduler lab logs-lab test test-schemas test-dag clean help
 
 ## Build the custom Airflow image (required once after Dockerfile changes, M3+)
 build:
@@ -35,6 +35,14 @@ logs:
 logs-scheduler:
 	docker compose logs -f airflow-scheduler
 
+## Tail JupyterLab logs
+logs-lab:
+	docker compose logs -f jupyter-lab
+
+## Open the local notebook browser service
+lab:
+	docker compose up -d jupyter-lab
+
 ## Run all tests inside the scheduler container
 test:
 	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/ -v
@@ -61,6 +69,8 @@ help:
 	@echo   ps              - Show running containers
 	@echo   logs            - Tail all logs
 	@echo   logs-scheduler  - Tail scheduler logs
+	@echo   logs-lab        - Tail JupyterLab logs
+	@echo   lab             - Start the JupyterLab browser service
 	@echo   test            - Run all tests inside Docker
 	@echo   test-schemas    - Run schema tests only
 	@echo   test-dag        - Run DAG integrity tests only

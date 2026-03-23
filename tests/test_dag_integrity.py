@@ -39,6 +39,33 @@ class TestDagIntegrity:
         assert "bronze" in dag.tags
         assert "coincap" in dag.tags
 
+    def test_bronze_history_backfill_dag_exists(self, dagbag):
+        """The Bronze history backfill DAG should be present."""
+        assert "bronze_coincap_history_backfill" in dagbag.dags
+
+    def test_bronze_history_backfill_dag_tasks(self, dagbag):
+        """Bronze history backfill DAG should plan, fetch/upload, then trigger Silver."""
+        dag = dagbag.dags["bronze_coincap_history_backfill"]
+        task_ids = {t.task_id for t in dag.tasks}
+        assert task_ids == {
+            "discover_backfill_plan",
+            "fetch_validate_upload_history",
+            "trigger_silver_history_backfill",
+        }
+
+    def test_bronze_history_backfill_dag_params(self, dagbag):
+        """Bronze history backfill DAG should expose anchor and day-count params."""
+        dag = dagbag.dags["bronze_coincap_history_backfill"]
+        assert "anchor_snapshot_date" in dag.params
+        assert "backfill_days" in dag.params
+
+    def test_bronze_history_backfill_dag_tags(self, dagbag):
+        """Bronze history backfill DAG should be tagged for UI filtering."""
+        dag = dagbag.dags["bronze_coincap_history_backfill"]
+        assert "bronze" in dag.tags
+        assert "coincap" in dag.tags
+        assert "backfill" in dag.tags
+
     def test_hello_world_dag_exists(self, dagbag):
         """The M1 hello_world DAG should still load fine."""
         assert "hello_world" in dagbag.dags
@@ -71,3 +98,37 @@ class TestDagIntegrity:
         dag = dagbag.dags["silver_coincap_assets"]
         assert "silver" in dag.tags
         assert "coincap" in dag.tags
+
+    def test_silver_history_backfill_dag_exists(self, dagbag):
+        """The Silver history backfill DAG should be present."""
+        assert "silver_coincap_history_backfill" in dagbag.dags
+
+    def test_silver_history_backfill_dag_tasks(self, dagbag):
+        """Silver history backfill DAG must load a triggered plan, then wait, then run Spark."""
+        dag = dagbag.dags["silver_coincap_history_backfill"]
+        task_ids = {t.task_id for t in dag.tasks}
+        assert task_ids == {
+            "load_triggered_backfill_plan",
+            "wait_for_bronze_history_backfill",
+            "run_silver_history_backfill",
+        }
+
+    def test_silver_history_backfill_dag_task_order(self, dagbag):
+        """Bronze history sensor must be upstream of the Spark backfill task."""
+        dag = dagbag.dags["silver_coincap_history_backfill"]
+        wait_task = dag.get_task("wait_for_bronze_history_backfill")
+        assert "run_silver_history_backfill" in {
+            t.task_id for t in wait_task.downstream_list
+        }
+
+    def test_silver_history_backfill_dag_has_no_manual_params(self, dagbag):
+        """Silver history backfill DAG should consume the Bronze-resolved plan via conf."""
+        dag = dagbag.dags["silver_coincap_history_backfill"]
+        assert dag.params == {}
+
+    def test_silver_history_backfill_dag_tags(self, dagbag):
+        """Silver history backfill DAG should be tagged for filtering in the UI."""
+        dag = dagbag.dags["silver_coincap_history_backfill"]
+        assert "silver" in dag.tags
+        assert "coincap" in dag.tags
+        assert "backfill" in dag.tags
