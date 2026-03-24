@@ -25,6 +25,7 @@ from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from pendulum import datetime, duration
 
 from schemas.coincap import CoinCapAssetsResponse
+from utils.coincap_api import format_coincap_request_error
 from utils.run_dates import bronze_assets_key, resolve_target_date
 
 logger = logging.getLogger(__name__)
@@ -91,10 +92,7 @@ def bronze_coincap_assets():
             response.raise_for_status()
             raw_json = response.json()
         except requests.exceptions.RequestException as exc:
-            raise RuntimeError(
-                "CoinCap fetch failed. This is usually an upstream connectivity issue "
-                f"(URL: {COINCAP_URL}). Check host/container DNS and outbound network access."
-            ) from exc
+            raise RuntimeError(format_coincap_request_error(exc, COINCAP_URL)) from exc
 
         # --- Step 2: Validate with Pydantic ---
         validated = CoinCapAssetsResponse.model_validate(raw_json)
