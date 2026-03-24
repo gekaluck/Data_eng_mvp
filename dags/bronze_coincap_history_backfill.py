@@ -24,6 +24,7 @@ from schemas.coincap_history import (
     CoinCapAssetMarketCapHistoryResponse,
     CoinCapTotalMarketCapHistoryResponse,
 )
+from utils.coincap_api import format_coincap_request_error
 from utils.run_dates import (
     bronze_history_backfill_key,
     date_to_unix_ms_end,
@@ -83,10 +84,7 @@ def _fetch_json(url: str, headers: dict[str, str], params: dict[str, int | str])
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as exc:
-        raise RuntimeError(
-            f"CoinCap history fetch failed for {url}. "
-            "Check API auth, endpoint paths, and outbound network access."
-        ) from exc
+        raise RuntimeError(format_coincap_request_error(exc, url)) from exc
 
 
 def _write_records_to_bronze(

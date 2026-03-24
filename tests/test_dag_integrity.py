@@ -132,3 +132,24 @@ class TestDagIntegrity:
         assert "silver" in dag.tags
         assert "coincap" in dag.tags
         assert "backfill" in dag.tags
+
+    def test_gold_dag_exists(self, dagbag):
+        """The gold_coincap_assets DAG should be present."""
+        assert "gold_coincap_assets" in dagbag.dags
+
+    def test_gold_dag_has_one_task(self, dagbag):
+        """Gold DAG should run the Spark transform task only."""
+        dag = dagbag.dags["gold_coincap_assets"]
+        task_ids = {t.task_id for t in dag.tasks}
+        assert task_ids == {"run_gold_transform"}
+
+    def test_gold_dag_has_target_date_param(self, dagbag):
+        """Gold DAG should expose a manual target_date override."""
+        dag = dagbag.dags["gold_coincap_assets"]
+        assert "target_date" in dag.params
+
+    def test_gold_dag_tags(self, dagbag):
+        """Gold DAG should be tagged for filtering in the UI."""
+        dag = dagbag.dags["gold_coincap_assets"]
+        assert "gold" in dag.tags
+        assert "coincap" in dag.tags
