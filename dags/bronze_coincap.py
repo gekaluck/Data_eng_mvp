@@ -1,4 +1,4 @@
-"""Bronze layer DAG — fetch CoinCap assets and store as Parquet in MinIO.
+﻿"""Bronze layer DAG - fetch CoinCap assets and store as Parquet in MinIO.
 
 Single-task DAG: the payload is <100KB so splitting into multiple tasks
 would add XCom overhead with no real benefit.
@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 import requests
 from airflow.decorators import dag, task
 from airflow.models.param import Param
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from pendulum import datetime, duration
 
@@ -75,7 +76,6 @@ def bronze_coincap_assets():
                 "Set it in .env before running bronze_coincap_assets."
             )
 
-        # --- Step 1: Fetch from API ---
         logger.info(
             "Fetching top %d assets from CoinCap: %s (target_date=%s)",
             COINCAP_LIMIT,
@@ -94,11 +94,9 @@ def bronze_coincap_assets():
         except requests.exceptions.RequestException as exc:
             raise RuntimeError(format_coincap_request_error(exc, COINCAP_URL)) from exc
 
-        # --- Step 2: Validate with Pydantic ---
         validated = CoinCapAssetsResponse.model_validate(raw_json)
         logger.info("Validated %d assets", len(validated.data))
 
-        # --- Step 3: Convert to Parquet ---
         records = [asset.model_dump() for asset in validated.data]
         table = pa.Table.from_pylist(records)
 
@@ -107,7 +105,6 @@ def bronze_coincap_assets():
         parquet_bytes = buffer.getvalue()
         logger.info("Parquet size: %d bytes", len(parquet_bytes))
 
-        # --- Step 4: Upload to MinIO ---
         s3_key = bronze_assets_key(target_date)
         hook = S3Hook(aws_conn_id=S3_CONN_ID)
         hook.load_bytes(
@@ -118,7 +115,15 @@ def bronze_coincap_assets():
         )
         logger.info("Uploaded to s3://%s/%s", BRONZE_BUCKET, s3_key)
 
-    fetch_validate_upload()
+    bronze_task = fetch_validate_upload()
+    trigger_silver = TriggerDagRunOperator(
+        task_id="trigger_silver_assets",
+        trigger_dag_id="silver_coincap_assets",
+        conf={"target_date": "{{ ds }}"},
+        wait_for_completion=False,
+    )
+
+    bronze_task >> trigger_silver
 
 
 bronze_coincap_assets()

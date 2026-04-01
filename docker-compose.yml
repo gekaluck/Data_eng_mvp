@@ -1,5 +1,5 @@
-# =============================================================================
-# Data Engineering MVP — Local Infrastructure
+﻿# =============================================================================
+# Data Engineering MVP â€” Local Infrastructure
 # =============================================================================
 # Services: Postgres (Airflow metadata), MinIO (S3 storage), Airflow (webserver + scheduler)
 # Executor: LocalExecutor (no Redis/Celery needed for single-machine learning setup)
@@ -7,7 +7,7 @@
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# Shared Airflow configuration (YAML anchor — keeps things DRY)
+# Shared Airflow configuration (YAML anchor â€” keeps things DRY)
 # ---------------------------------------------------------------------------
 x-airflow-common: &airflow-common
   # M3: switched from image: to build: so we can add Java (required by PySpark).
@@ -34,16 +34,19 @@ x-airflow-common: &airflow-common
     COINCAP_ASSET_MARKETCAP_HISTORY_PATH_TEMPLATE: ${COINCAP_ASSET_MARKETCAP_HISTORY_PATH_TEMPLATE:-/assets/{id}/marketcap-history}
     COINCAP_TOTAL_MARKETCAP_HISTORY_PATH: ${COINCAP_TOTAL_MARKETCAP_HISTORY_PATH:-/assets/totals/total-marketcap-history}
     COINCAP_API_KEY: ${COINCAP_API_KEY:-}
+    DBT_TRINO_HOST: ${DBT_TRINO_HOST:-trino}
+    DBT_TRINO_PORT: ${DBT_TRINO_PORT:-8080}
+    DBT_TRINO_USER: ${DBT_TRINO_USER:-dbt}
     PYTHONPATH: /opt/airflow:/opt/airflow/dags
 
-    # MinIO endpoint — used by the silver PySpark job to configure S3A
+    # MinIO endpoint â€” used by the silver PySpark job to configure S3A
     MINIO_ENDPOINT: "http://minio:9000"
     ICEBERG_CATALOG_HOST: ${ICEBERG_CATALOG_HOST:-postgres}
     ICEBERG_CATALOG_PORT: ${ICEBERG_CATALOG_PORT:-5432}
     ICEBERG_SILVER_CATALOG_DB: ${ICEBERG_SILVER_CATALOG_DB:-iceberg_silver}
     ICEBERG_GOLD_CATALOG_DB: ${ICEBERG_GOLD_CATALOG_DB:-iceberg_gold}
 
-    # MinIO S3 connection — set via env var so it's reproducible (no UI clicks needed)
+    # MinIO S3 connection â€” set via env var so it's reproducible (no UI clicks needed)
     # Format: aws://<access_key>:<secret_key>@?host=http://minio:9000&extra__aws__endpoint_url=http://minio:9000
     AIRFLOW_CONN_MINIO_S3: aws://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@?endpoint_url=http%3A%2F%2Fminio%3A9000
 
@@ -54,8 +57,9 @@ x-airflow-common: &airflow-common
     - ./notebooks:/opt/airflow/notebooks
     - ./plugins:/opt/airflow/plugins
     - ./tests:/opt/airflow/tests
+    - ./dbt:/opt/airflow/dbt
     - ./spark:/opt/airflow/spark         # PySpark jobs (M3+)
-    - spark-ivy-cache:/opt/spark-ivy     # Iceberg/S3A JAR cache — persists across restarts
+    - spark-ivy-cache:/opt/spark-ivy     # Iceberg/S3A JAR cache â€” persists across restarts
   # Keep Airflow running as root on Windows so the named log volume stays writable
   # across init/webserver/scheduler containers.
   user: "0:0"
@@ -71,7 +75,7 @@ x-airflow-common: &airflow-common
 services:
 
   # -------------------------------------------------------------------------
-  # Postgres — Airflow metadata database
+  # Postgres â€” Airflow metadata database
   # -------------------------------------------------------------------------
   postgres:
     image: postgres:16
@@ -89,7 +93,7 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------------------------------
-  # MinIO — S3-compatible object storage (the "data lake")
+  # MinIO â€” S3-compatible object storage (the "data lake")
   # -------------------------------------------------------------------------
   iceberg-catalog-init:
     image: postgres:16
@@ -131,7 +135,7 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------------------------------
-  # MinIO Init — one-shot: creates bronze/silver/gold buckets
+  # MinIO Init â€” one-shot: creates bronze/silver/gold buckets
   # Inline entrypoint avoids a separate shell script (no Windows line-ending issues)
   # -------------------------------------------------------------------------
   minio-init:
@@ -149,7 +153,7 @@ services:
       "
 
   # -------------------------------------------------------------------------
-  # Airflow Init — one-shot: run db migrate + create admin user
+  # Airflow Init â€” one-shot: run db migrate + create admin user
   # -------------------------------------------------------------------------
   airflow-init:
     <<: *airflow-common
@@ -172,7 +176,7 @@ services:
       _AIRFLOW_WWW_USER_CREATE: 'true'
 
   # -------------------------------------------------------------------------
-  # Airflow Webserver — the UI (http://localhost:8080)
+  # Airflow Webserver â€” the UI (http://localhost:8080)
   # -------------------------------------------------------------------------
   airflow-webserver:
     <<: *airflow-common
@@ -191,7 +195,7 @@ services:
         condition: service_completed_successfully
 
   # -------------------------------------------------------------------------
-  # Airflow Scheduler — picks up and runs DAG tasks
+  # Airflow Scheduler â€” picks up and runs DAG tasks
   # With LocalExecutor, the scheduler also executes tasks (no separate worker)
   # -------------------------------------------------------------------------
   airflow-scheduler:
@@ -273,3 +277,5 @@ volumes:
   minio-data:
   airflow-logs:
   spark-ivy-cache:    # Caches Iceberg/S3A JARs so they survive container restarts
+
+

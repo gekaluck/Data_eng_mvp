@@ -1,4 +1,4 @@
-name: "crypto_lakehouse"
+﻿name: "crypto_lakehouse"
 version: "1.0.0"
 config-version: 2
 
@@ -13,12 +13,3 @@ models:
     gold:
       +database: gold
       +materialized: table
-      daily_snapshot:
-        +materialized: table
-        +alias: daily_snapshot
-      mc_rank_change:
-        +materialized: table
-        +alias: mc_rank_change
-      weekly_roll_avg:
-        +materialized: table
-        +alias: weekly_roll_avg

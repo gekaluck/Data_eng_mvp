@@ -1,4 +1,4 @@
-"""Silver layer DAG to transform CoinCap Bronze data into Iceberg tables."""
+﻿"""Silver layer DAG to transform CoinCap Bronze data into Iceberg tables."""
 
 import logging
 import os
@@ -7,6 +7,7 @@ import sys
 
 from airflow.decorators import dag, task
 from airflow.models.param import Param
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sensors.python import PythonSensor
 from pendulum import datetime, duration
@@ -113,7 +114,21 @@ def silver_coincap_assets():
 
         logger.info("Silver transform complete for %s", target_date_str)
 
-    wait_for_bronze >> run_silver_transform()
+    silver_task = run_silver_transform()
+    trigger_spark_gold = TriggerDagRunOperator(
+        task_id="trigger_gold_assets",
+        trigger_dag_id="gold_coincap_assets",
+        conf={"target_date": "{{ dag_run.conf.get('target_date', ds) if dag_run and dag_run.conf else ds }}"},
+        wait_for_completion=False,
+    )
+    trigger_dbt_gold = TriggerDagRunOperator(
+        task_id="trigger_gold_dbt_assets",
+        trigger_dag_id="gold_dbt_coincap_assets",
+        conf={"target_date": "{{ dag_run.conf.get('target_date', ds) if dag_run and dag_run.conf else ds }}"},
+        wait_for_completion=False,
+    )
+
+    wait_for_bronze >> silver_task >> [trigger_spark_gold, trigger_dbt_gold]
 
 
 silver_coincap_assets()

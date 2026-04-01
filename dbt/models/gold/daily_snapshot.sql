@@ -1,4 +1,9 @@
-{{ config(alias='daily_snapshot') }}
+﻿{{ config(alias='daily_snapshot',
+materialized='incremental',
+incremental_strategy='merge',
+unique_key=['snapshot_date', 'coin_id'],
+partition_by={'field': 'snapshot_date', 'data_type': 'date'}
+) }}
 
 {% set snapshot_date = var('snapshot_date', none) %}
 
@@ -85,3 +90,4 @@ select
 from ranked_snapshot
 left join coins
     on ranked_snapshot.coin_id = coins.coin_id
+

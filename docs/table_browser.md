@@ -1,4 +1,4 @@
-# Table Browser
+﻿# Table Browser
 
 ## Purpose
 
@@ -59,7 +59,7 @@ The runtime exposes:
    - Host: `localhost`
    - Port: `8081`
    - Catalog: `silver` or `gold`
-   - Schema: `crypto`
+   - Schema: `crypto` for Spark Gold tables, `crypto_dbt` for dbt Gold tables
 
 3. Example queries:
 
@@ -67,22 +67,34 @@ The runtime exposes:
    SHOW TABLES FROM silver.crypto;
    SELECT * FROM silver.crypto.coins LIMIT 20;
    SELECT * FROM gold.crypto.daily_snapshot LIMIT 20;
+   SELECT * FROM gold.crypto_dbt.daily_snapshot LIMIT 20;
    ```
 
 ## dbt workflow
 
-1. Install `dbt-trino`
-2. Copy `dbt/profiles.yml.example` to `dbt/profiles.yml`
-3. Validate the connection:
+1. Validate the connection:
 
    ```bash
    dbt debug --project-dir dbt --profiles-dir dbt
    ```
 
-4. Inspect the declared Silver sources:
+2. Inspect declared resources:
 
    ```bash
-   dbt ls --project-dir dbt --profiles-dir dbt --resource-type source
+   dbt ls --project-dir dbt --profiles-dir dbt
+   ```
+
+3. Build Gold models for a single logical date:
+
+   ```bash
+   dbt run --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg --vars '{"snapshot_date": "2026-04-01"}'
+   ```
+
+4. Generate and serve docs:
+
+   ```bash
+   dbt docs generate --project-dir dbt --profiles-dir dbt
+   dbt docs serve --project-dir dbt --profiles-dir dbt --port 8082
    ```
 
 ## Important migration note
