@@ -6,7 +6,7 @@ import os
 
 from pyspark.sql import SparkSession
 
-from spark.silver_transform import SPARK_PACKAGES
+from spark.iceberg_runtime import configure_runtime_spark_builder
 
 JUPYTER_SPARK_IVY_DIR = "/home/airflow/.ivy2"
 
@@ -17,33 +17,18 @@ def build_browser_spark_session(
     minio_password: str,
 ) -> SparkSession:
     """Create a Spark session with both Silver and Gold Iceberg catalogs."""
-    return (
-        SparkSession.builder
-        .appName("lakehouse_browser")
+    builder = (
+        SparkSession.builder.appName("lakehouse_browser")
         .master("local[2]")
-        .config("spark.jars.packages", SPARK_PACKAGES)
-        .config(
-            "spark.driver.extraJavaOptions",
-            f"-Divy.cache.dir={JUPYTER_SPARK_IVY_DIR} -Divy.home={JUPYTER_SPARK_IVY_DIR}",
-        )
-        .config(
-            "spark.sql.extensions",
-            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
-        )
-        .config("spark.sql.catalog.silver", "org.apache.iceberg.spark.SparkCatalog")
-        .config("spark.sql.catalog.silver.type", "hadoop")
-        .config("spark.sql.catalog.silver.warehouse", "s3a://silver/iceberg")
-        .config("spark.sql.catalog.gold", "org.apache.iceberg.spark.SparkCatalog")
-        .config("spark.sql.catalog.gold.type", "hadoop")
-        .config("spark.sql.catalog.gold.warehouse", "s3a://gold/iceberg")
-        .config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
-        .config("spark.hadoop.fs.s3a.access.key", minio_user)
-        .config("spark.hadoop.fs.s3a.secret.key", minio_password)
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.ui.enabled", "false")
-        .getOrCreate()
     )
+    return configure_runtime_spark_builder(
+        builder,
+        minio_endpoint=minio_endpoint,
+        minio_user=minio_user,
+        minio_password=minio_password,
+        catalog_names=["silver", "gold"],
+        ivy_dir=JUPYTER_SPARK_IVY_DIR,
+    ).getOrCreate()
 
 
 def connect_browser_spark() -> SparkSession:

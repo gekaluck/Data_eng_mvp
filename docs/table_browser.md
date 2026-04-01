@@ -2,26 +2,32 @@
 
 ## Purpose
 
-This project stores Silver and Gold as Iceberg tables in MinIO. The easiest way to
-browse them locally, without changing the existing Hadoop catalog setup, is JupyterLab
-backed by the same Spark/Iceberg configuration used by the DAG transforms.
+This project stores Silver and Gold as Iceberg tables in MinIO. You now have two
+local ways to explore them:
 
-## What was added
+- **JupyterLab + Spark** for notebook-style inspection using the same Spark runtime
+  as the DAG transforms
+- **Trino** for SQL-first querying, dbt development, and BI-friendly access
+
+Both use the same JDBC-backed Iceberg catalog metadata in Postgres and the same
+object storage in MinIO.
+
+## What is available
 
 - `jupyter-lab` service in `docker-compose.yml`
+- `trino` service in `docker-compose.yml`
 - `spark/lakehouse_browser.py` helper module
 - `notebooks/lakehouse_browser.ipynb` starter notebook
+- `dbt/` project initialized for Trino
 
-The notebook opens:
+The runtime exposes:
 
 - `silver` catalog at `s3a://silver/iceberg`
 - `gold` catalog at `s3a://gold/iceberg`
 
-Both use the local MinIO endpoint and credentials from `.env`.
+## JupyterLab workflow
 
-## How to use it
-
-1. Rebuild the image because JupyterLab and pandas were added:
+1. Rebuild the Airflow image if dependencies changed:
 
    ```bash
    make build
@@ -33,61 +39,67 @@ Both use the local MinIO endpoint and credentials from `.env`.
    make lab
    ```
 
-3. Set the token in the real `.env` file, not `.env.example`:
-
-   ```bash
-   JUPYTER_TOKEN=your_local_token_here
-   ```
-
-   If `JUPYTER_TOKEN` is missing from `.env`, Docker Compose falls back to the
-   default token `data-eng-mvp`.
-
-4. Recreate the notebook service after changing `.env`:
-
-   ```bash
-   docker compose up -d --force-recreate jupyter-lab
-   ```
-
-5. Open JupyterLab:
+3. Open JupyterLab:
 
    - URL: `http://localhost:8888`
    - Token: value of `JUPYTER_TOKEN` from `.env`
 
-6. Open `notebooks/lakehouse_browser.ipynb`
+4. Open `notebooks/lakehouse_browser.ipynb`
 
-7. Run the cells to:
+## Trino workflow
 
-   - list namespaces
-   - list tables in `silver.crypto`
-   - preview rows from a table
-   - inspect a table schema
+1. Start Trino:
 
-## Typical examples
+   ```bash
+   make trino
+   ```
 
-```python
-list_tables(spark, "silver", "crypto")
-preview_table(spark, "silver", "crypto", "coins", limit=20)
-describe_table(spark, "silver", "crypto", "price_snapshots")
-```
+2. Connect with a SQL client to:
 
-Later, when Gold exists:
+   - Host: `localhost`
+   - Port: `8081`
+   - Catalog: `silver` or `gold`
+   - Schema: `crypto`
 
-```python
-list_tables(spark, "gold", "crypto")
-preview_table(spark, "gold", "crypto", "your_gold_table", limit=20)
-```
+3. Example queries:
 
-## Why not Trino right now?
+   ```sql
+   SHOW TABLES FROM silver.crypto;
+   SELECT * FROM silver.crypto.coins LIMIT 20;
+   SELECT * FROM gold.crypto.daily_snapshot LIMIT 20;
+   ```
 
-Trino is a good table browser/query layer for Iceberg, but the current repo writes
-Iceberg tables with the Hadoop catalog. Trino's Iceberg connector supports Hive,
-Glue, JDBC, REST, Nessie, and Snowflake catalogs, but not Hadoop catalogs.
+## dbt workflow
 
-Official references:
+1. Install `dbt-trino`
+2. Copy `dbt/profiles.yml.example` to `dbt/profiles.yml`
+3. Validate the connection:
 
-- [Trino Iceberg connector](https://trino.io/docs/current/connector/iceberg.html)
+   ```bash
+   dbt debug --project-dir dbt --profiles-dir dbt
+   ```
+
+4. Inspect the declared Silver sources:
+
+   ```bash
+   dbt ls --project-dir dbt --profiles-dir dbt --resource-type source
+   ```
+
+## Important migration note
+
+This repo previously used the Iceberg Hadoop catalog. Trino cannot query that
+catalog directly, so the runtime now uses Iceberg JDBC catalogs backed by Postgres.
+
+Implication:
+
+- Existing Silver and Gold table data in MinIO is still there
+- Existing Hadoop-catalog metadata is not reused automatically
+- Rerun the Spark transforms to recreate catalog entries in JDBC, or register the
+  existing table locations in Trino before using dbt against old local data
+
+## References
+
+- [Trino Iceberg connector](https://trino.io/docs/current/connector/iceberg)
 - [Trino metastore/catalog options](https://trino.io/docs/current/object-storage/metastores.html)
-
-If we later want DBeaver or BI tools over these tables, the right next step is to move
-the Iceberg catalog from Hadoop to a Trino-compatible catalog such as JDBC, REST, or
-Nessie.
+- [Iceberg Spark configuration](https://iceberg.apache.org/docs/latest/spark-configuration/)
+- [Iceberg JDBC catalog](https://iceberg.apache.org/docs/latest/jdbc/)

@@ -8,49 +8,30 @@ from datetime import date, datetime
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
+from spark.iceberg_runtime import SPARK_PACKAGES, configure_runtime_spark_builder
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-SPARK_PACKAGES = ",".join(
-    [
-        "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2",
-        "org.apache.hadoop:hadoop-aws:3.3.4",
-        "com.amazonaws:aws-java-sdk-bundle:1.12.367",
-    ]
-)
-
-
 def build_spark_session(
     minio_endpoint: str, minio_user: str, minio_password: str
 ) -> SparkSession:
     """Create a local-mode SparkSession with Iceberg and MinIO configured."""
-    return (
-        SparkSession.builder
-        .appName("silver_coincap")
+    builder = (
+        SparkSession.builder.appName("silver_coincap")
         .master("local[2]")
-        .config("spark.jars.packages", SPARK_PACKAGES)
-        .config(
-            "spark.driver.extraJavaOptions",
-            "-Divy.cache.dir=/opt/spark-ivy -Divy.home=/opt/spark-ivy",
-        )
-        .config(
-            "spark.sql.extensions",
-            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
-        )
-        .config("spark.sql.catalog.silver", "org.apache.iceberg.spark.SparkCatalog")
-        .config("spark.sql.catalog.silver.type", "hadoop")
-        .config("spark.sql.catalog.silver.warehouse", "s3a://silver/iceberg")
-        .config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
-        .config("spark.hadoop.fs.s3a.access.key", minio_user)
-        .config("spark.hadoop.fs.s3a.secret.key", minio_password)
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.ui.enabled", "false")
-        .getOrCreate()
     )
+    return configure_runtime_spark_builder(
+        builder,
+        minio_endpoint=minio_endpoint,
+        minio_user=minio_user,
+        minio_password=minio_password,
+        catalog_names=["silver"],
+        ivy_dir="/opt/spark-ivy",
+    ).getOrCreate()
 
 
 def build_local_test_spark_session(
