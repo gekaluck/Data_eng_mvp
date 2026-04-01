@@ -15,7 +15,12 @@ from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sensors.python import PythonSensor
 from pendulum import datetime, duration
 
-from utils.run_dates import bronze_history_backfill_key, resolve_int_param, resolve_optional_date_param
+from utils.run_dates import (
+    bronze_history_backfill_key,
+    resolve_backfill_window,
+    resolve_int_param,
+    resolve_optional_date_param,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +39,31 @@ def validate_envvars(envvars: dict[str, str]) -> None:
         )
 
 
-def _require_triggered_backfill_plan(context) -> dict:
-    """Read the resolved backfill plan from dag_run.conf."""
+def _coerce_coin_ids(raw_value) -> list[str]:
+    """Accept a JSON array, native list, or comma-separated string of coin ids."""
+    if raw_value in (None, ""):
+        return []
+
+    if isinstance(raw_value, list):
+        values = raw_value
+    else:
+        text_value = str(raw_value).strip()
+        if not text_value:
+            return []
+        if text_value.startswith("["):
+            values = json.loads(text_value)
+        else:
+            values = [part.strip() for part in text_value.split(",")]
+
+    cleaned_values = [str(value).strip() for value in values if str(value).strip()]
+    if not cleaned_values:
+        raise ValueError("coin_ids must contain at least one non-empty coin id.")
+
+    return cleaned_values
+
+
+def _resolve_backfill_plan(context) -> dict:
+    """Read a resolved plan from dag_run.conf or build one from manual params."""
     dag_run = context.get("dag_run")
     conf = getattr(dag_run, "conf", None) or {}
     required_keys = {
@@ -46,12 +74,30 @@ def _require_triggered_backfill_plan(context) -> dict:
         "window_end_date",
     }
     missing_keys = sorted(required_keys - set(conf))
-    if missing_keys:
+    if not missing_keys:
+        return conf
+
+    anchor_snapshot_date = resolve_optional_date_param(context, "anchor_snapshot_date")
+    backfill_days = resolve_int_param(context, "backfill_days", default=60)
+    coin_ids = _coerce_coin_ids(conf.get("coin_ids"))
+
+    if anchor_snapshot_date is None or not coin_ids:
         raise ValueError(
-            "silver_coincap_history_backfill requires a resolved backfill plan in dag_run.conf. "
-            f"Missing keys: {', '.join(missing_keys)}"
+            "silver_coincap_history_backfill requires either a resolved backfill plan in dag_run.conf "
+            "or manual trigger values for anchor_snapshot_date and coin_ids."
         )
-    return conf
+
+    window_start_date, window_end_date = resolve_backfill_window(
+        anchor_snapshot_date,
+        backfill_days,
+    )
+    return {
+        "coin_ids": coin_ids,
+        "anchor_snapshot_date": anchor_snapshot_date.isoformat(),
+        "backfill_days": backfill_days,
+        "window_start_date": window_start_date.isoformat(),
+        "window_end_date": window_end_date.isoformat(),
+    }
 
 
 def bronze_history_backfill_exists(plan: dict, **_context) -> bool:
@@ -112,7 +158,24 @@ def _extract_backfill_plan(stdout: str, stderr: str) -> dict:
     schedule=None,
     start_date=datetime(2025, 1, 1),
     catchup=False,
-    params={},
+    params={
+        "anchor_snapshot_date": Param(
+            default=None,
+            type=["null", "string"],
+            description="Optional YYYY-MM-DD anchor date for manual Silver reruns.",
+        ),
+        "backfill_days": Param(
+            default=60,
+            type="integer",
+            minimum=1,
+            description="Number of days to backfill before the anchor date.",
+        ),
+        "coin_ids": Param(
+            default=None,
+            type=["null", "string", "array"],
+            description="Comma-separated list or JSON array of CoinCap ids for manual reruns.",
+        ),
+    },
     default_args={
         "retries": 2,
         "retry_delay": duration(seconds=30),
@@ -124,10 +187,10 @@ def silver_coincap_history_backfill():
 
     @task()
     def load_triggered_backfill_plan(**context):
-        """Read the Bronze-resolved backfill plan from dag_run.conf."""
-        plan = _require_triggered_backfill_plan(context)
+        """Read a Bronze-resolved plan or build one from manual trigger params."""
+        plan = _resolve_backfill_plan(context)
         logger.info(
-            "Loaded triggered backfill plan: anchor=%s window=%s..%s coins=%d",
+            "Loaded backfill plan: anchor=%s window=%s..%s coins=%d",
             plan["anchor_snapshot_date"],
             plan["window_start_date"],
             plan["window_end_date"],

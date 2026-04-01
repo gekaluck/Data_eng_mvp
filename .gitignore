@@ -2,7 +2,8 @@
 __pycache__/
 *.pyc
 *.pyo
-
+.venv/
+venv/
 # Airflow logs (bind-mounted, can be large)
 logs/
 !logs/.gitkeep
@@ -23,3 +24,13 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# dbt artifacts
+.dbt/
+dbt/dbt_packages/
+dbt/logs/
+dbt/target/
+# Local dbt/user state
+dbt/.user.yml
+nul
+

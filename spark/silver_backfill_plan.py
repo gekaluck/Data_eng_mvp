@@ -44,7 +44,7 @@ def main() -> None:
         if anchor_arg.lower() == "auto":
             anchor_row = (
                 spark.table("silver.crypto.price_snapshots")
-                .selectExpr("min(snapshot_date) as anchor_snapshot_date")
+                .selectExpr("max(snapshot_date) as anchor_snapshot_date")
                 .collect()[0]
             )
             anchor_snapshot_date = anchor_row["anchor_snapshot_date"]
@@ -79,3 +79,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -5,7 +5,7 @@
 # Run `make help` to see all available targets.
 # =============================================================================
 
-.PHONY: build up down restart ps logs logs-scheduler lab logs-lab test test-schemas test-dag clean help
+.PHONY: build up down restart ps logs logs-scheduler trino logs-trino lab logs-lab test test-schemas test-dag clean help
 
 ## Build the custom Airflow image (required once after Dockerfile changes, M3+)
 build:
@@ -34,6 +34,14 @@ logs:
 ## Tail scheduler logs (useful for DAG import errors)
 logs-scheduler:
 	docker compose logs -f airflow-scheduler
+
+## Start the Trino query engine
+trino:
+	docker compose up -d trino
+
+## Tail Trino logs
+logs-trino:
+	docker compose logs -f trino
 
 ## Tail JupyterLab logs
 logs-lab:
@@ -69,6 +77,8 @@ help:
 	@echo   ps              - Show running containers
 	@echo   logs            - Tail all logs
 	@echo   logs-scheduler  - Tail scheduler logs
+	@echo   trino           - Start the Trino query engine
+	@echo   logs-trino      - Tail Trino logs
 	@echo   logs-lab        - Tail JupyterLab logs
 	@echo   lab             - Start the JupyterLab browser service
 	@echo   test            - Run all tests inside Docker

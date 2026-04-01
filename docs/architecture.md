@@ -3,7 +3,7 @@
 ## Overview
 
 This is a **local-first batch data platform** built around crypto market data.
-Its purpose is learning — not production deployment.
+Its purpose is learning, not production deployment.
 
 The system follows a **lakehouse-style** architecture with three layers:
 - **Bronze**: raw, untransformed data as received from the source API
@@ -14,11 +14,11 @@ The system follows a **lakehouse-style** architecture with three layers:
 
 ## Data Flow
 
-```
+```text
 [CoinCap API]
       |
       v
-  Airflow DAG (daily) — Pydantic validation → Parquet
+  Airflow DAG (daily) -> Pydantic validation -> Parquet
       |
       v
   Bronze (Parquet in MinIO, date-partitioned)
@@ -27,144 +27,145 @@ The system follows a **lakehouse-style** architecture with three layers:
   PySpark job (clean, type, deduplicate)
       |
       v
-  Silver (Iceberg tables in MinIO, Hadoop catalog metadata in MinIO)
+  Silver (Iceberg tables in MinIO, JDBC catalog metadata in Postgres)
       |
       v
   PySpark job (aggregate)
       |
       v
-  Gold (Iceberg tables in MinIO, Hadoop catalog metadata in MinIO)
+  Gold (Iceberg tables in MinIO, JDBC catalog metadata in Postgres)
+      |
+      v
+  Trino + dbt
 ```
 
 ---
 
 ## Components
 
-### Data Source — CoinCap API
+### Data Source - CoinCap API
 - REST API currently served from `rest.coincap.io`
 - Current access model requires an API key
 - Provides price, market cap, volume, and historical data for cryptocurrencies
-- We fetch daily snapshots for the top 10–20 coins by market cap
+- We fetch daily snapshots for the top 10-20 coins by market cap
 
-### Orchestration — Apache Airflow
-- Runs locally via the official Docker Compose setup
+### Orchestration - Apache Airflow
+- Runs locally via Docker Compose
 - Manages scheduling, retries, backfills, and DAG dependencies
-- Airflow is a **first-class learning target**, not just glue
+- Airflow is a first-class learning target, not just glue
 
-### Compute — PySpark
+### Compute - PySpark
 - Local PySpark (Spark 3.5.x)
 - Used for bronze-to-silver and silver-to-gold transformations
-- Explicit DataFrame API — no magic wrappers
+- Explicit DataFrame API
 
-### Storage — MinIO
+### Query Layer - Trino
+- Single-node Trino runs locally in Docker
+- Reads and writes Iceberg tables through the shared JDBC catalog
+- Serves as the SQL endpoint for dbt and ad hoc exploration
+
+### Storage - MinIO
 - S3-compatible object storage, runs as a Docker container
-- Acts as the "data lake" backing store for all layers
+- Acts as the lakehouse backing store for all layers
 - One bucket per layer: `s3a://bronze/...`, `s3a://silver/...`, `s3a://gold/...`
 
-### Table Format — Apache Iceberg
+### Table Format - Apache Iceberg
 - Iceberg 1.5.x on top of Spark
-- Hadoop catalog with metadata stored directly in MinIO
+- JDBC catalog metadata stored in Postgres
+- Data and metadata files stored in MinIO
 - Used for silver and gold layers
-- Gives us: schema evolution, partition management, time travel, incremental reads
+- Gives us schema evolution, partition management, time travel, and incremental reads
 
 ---
 
 ## Data Modeling Approach
 
 Data modeling is a cross-cutting concern across the three layers. Each layer has a
-different modeling philosophy, and understanding *why* is as important as the code.
+different modeling philosophy, and understanding why is as important as the code.
 
 ### Modeling by Layer
 
-| Layer  | Modeling style         | Key question                                      |
-|--------|------------------------|---------------------------------------------------|
-| Bronze | No model (raw storage) | "What did the source give us?"                    |
-| Silver | Entity-centric / 3NF   | "What are the real-world things in this data?"    |
-| Gold   | Analytical / dimensional | "What questions do we want to answer?"           |
+| Layer  | Modeling style            | Key question                                   |
+|--------|---------------------------|------------------------------------------------|
+| Bronze | No model (raw storage)    | "What did the source give us?"                 |
+| Silver | Entity-centric / 3NF      | "What are the real-world things in this data?" |
+| Gold   | Analytical / dimensional  | "What questions do we want to answer?"         |
 
 ### Silver: Entity Modeling
-In the silver layer we identify **entities** (the nouns in our domain) and give each
-one a clean, well-typed table. For crypto data, the core entities are:
 
-- **Coin** — static/slow-changing attributes (name, symbol, rank)
-- **Price snapshot** — time-series fact (price, volume, market cap at a point in time)
+In the silver layer we identify **entities** and give each one a clean, typed table.
+For crypto data, the core entities are:
 
-Separating these is a deliberate modeling choice:
-- Coin attributes change rarely; price data changes daily
+- **Coin**: static or slow-changing attributes such as name, symbol, and rank
+- **Price snapshot**: time-series facts such as price, volume, and market cap
+
+Separating these is deliberate:
+- Coin attributes change rarely while price data changes daily
 - Keeping them apart avoids redundant storage and makes updates cleaner
-- Joins are cheap and explicit — you always know what you're working with
+- Joins are explicit and cheap at this scale
 
-This is essentially **third normal form (3NF)**: eliminate redundancy, one fact in one place.
+This is effectively **third normal form (3NF)**.
 
 ### Gold: Dimensional / Analytical Modeling
-In the gold layer we reshape data around **questions**, not entities. This is where
-concepts from dimensional modeling apply:
 
-- **Fact tables**: measurable events (e.g., daily price facts with foreign keys)
-- **Dimension tables**: descriptive context (e.g., coin dimension with attributes)
-- **Denormalization**: intentional — gold trades normalization for query simplicity
-- **Pre-aggregations**: rolling averages, rankings, period-over-period changes
+In the gold layer we reshape data around **questions**, not entities.
 
-The gold layer optimizes for the *reader*, not the *writer*.
+- **Fact tables**: measurable events and observations
+- **Dimension tables**: descriptive context
+- **Denormalization**: intentional where it improves readability and query ergonomics
+- **Pre-aggregations**: rolling averages, rankings, and period-over-period changes
 
-### Why This Matters
-Most data engineering courses skip modeling or treat it as an afterthought. But in practice,
-**bad models cause more pain than bad code**. A poorly modeled silver layer cascades into
-confusing gold tables and unreliable metrics. We'll build both layers deliberately and
-explain the tradeoffs as we go.
+The gold layer optimizes for the reader, not the writer.
 
 ---
 
 ## Layer Definitions
 
 ### Bronze
-- **Format**: Parquet (Snappy compression) — columnar, compressed, self-describing
+- **Format**: Parquet (Snappy compression)
 - **Storage**: MinIO (`s3://bronze/crypto/assets/year=YYYY/month=MM/day=DD/assets.parquet`)
-- **Schema enforcement**: Pydantic V2 validation at ingestion time — catches API changes early
-- **Modeling**: None — this is intentional. Bronze preserves the source shape exactly,
-  so we can always reprocess from scratch if our models change.
-- **Ingestion**: Single-task Airflow DAG (`bronze_coincap_assets`), daily schedule
-- **Purpose**: Immutable landing zone; source of truth for reprocessing
+- **Schema enforcement**: Pydantic validation at ingestion time
+- **Modeling**: none; bronze preserves source shape exactly
+- **Purpose**: immutable landing zone and source of truth for reprocessing
 
 ### Silver
 - **Format**: Iceberg tables (Parquet underneath)
-- **Schema enforcement**: Yes — explicit PySpark schemas
-- **Transformations**: Type casting, renaming, deduplication, null handling
-- **Modeling**: Entity-centric (3NF). Separate tables for distinct real-world concepts.
-  Each table has a clear grain (one row = one coin, or one row = one coin per day).
-- **Purpose**: Clean, queryable, structured data
+- **Schema enforcement**: explicit PySpark schemas
+- **Transformations**: type casting, renaming, deduplication, null handling
+- **Modeling**: entity-centric with a clear grain per table
+- **Purpose**: clean, queryable, structured data
 
 ### Gold
 - **Format**: Iceberg tables (Parquet underneath)
-- **Transformations**: Aggregations, window functions, derived metrics
-- **Modeling**: Analytical / dimensional. Fact and dimension tables, denormalized where
-  it helps readability. Designed around the questions we want to answer.
-- **Purpose**: Analysis-ready datasets (e.g., daily summaries, rolling averages, rankings)
+- **Transformations**: aggregations, window functions, derived metrics
+- **Modeling**: analytical and dimensional
+- **Purpose**: analysis-ready datasets
 
 ---
 
 ## Infrastructure Stack (Local)
 
-| Component      | Implementation         | Runs In       |
-|----------------|------------------------|---------------|
-| Orchestration  | Apache Airflow 2.x     | Docker        |
-| Compute        | PySpark 3.5.x          | Local / Docker|
-| Storage        | MinIO                  | Docker        |
-| Table format   | Iceberg 1.5.x          | Spark plugin  |
-| Catalog        | Hadoop                 | MinIO metadata|
-| OS             | Windows + WSL2/Docker  | Host          |
+| Component      | Implementation      | Runs In        |
+|----------------|---------------------|----------------|
+| Orchestration  | Apache Airflow 2.x  | Docker         |
+| Compute        | PySpark 3.5.x       | Local / Docker |
+| Query engine   | Trino 477           | Docker         |
+| Storage        | MinIO               | Docker         |
+| Table format   | Iceberg 1.5.x       | Spark plugin   |
+| Catalog        | JDBC                | Postgres       |
+| OS             | Windows + Docker    | Host           |
 
 ---
 
 ## Cloud Extension (Optional, Future)
 
-If we later extend to AWS, the mapping would be:
+If this later moves to AWS, the rough mapping is:
 
-| Local           | AWS Equivalent     |
-|-----------------|--------------------|
-| MinIO           | S3                 |
-| Hadoop catalog  | AWS Glue / REST catalog |
-| PySpark (local) | EMR Serverless     |
-| Airflow (local) | MWAA or self-hosted|
+| Local           | AWS Equivalent      |
+|-----------------|---------------------|
+| MinIO           | S3                  |
+| JDBC catalog    | AWS Glue / REST     |
+| PySpark (local) | EMR Serverless      |
+| Airflow (local) | MWAA or self-hosted |
 
-This is documented for context only. Nothing in the project requires cloud access.
+This is context only. Nothing in the project requires cloud access.

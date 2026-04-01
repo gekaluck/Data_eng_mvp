@@ -1,0 +1,13 @@
+crypto_lakehouse:
+  target: local
+  outputs:
+    local:
+      type: trino
+      method: none
+      host: "{{ env_var('DBT_TRINO_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_TRINO_PORT', '8081') | int }}"
+      user: "{{ env_var('DBT_TRINO_USER', 'dbt') }}"
+      database: gold
+      schema: crypto_dbt
+      threads: 4
+      http_scheme: http

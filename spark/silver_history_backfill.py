@@ -29,6 +29,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _log_df_summary(name, df) -> None:
+    """Log row count and date coverage for a Spark DataFrame when debugging backfills."""
+    summary = (
+        df.agg(
+            F.count(F.lit(1)).alias("rows"),
+            F.min("snapshot_date").alias("min_snapshot_date"),
+            F.max("snapshot_date").alias("max_snapshot_date"),
+        )
+        .collect()[0]
+    )
+    logger.info(
+        "%s -> rows=%s min_snapshot_date=%s max_snapshot_date=%s",
+        name,
+        summary["rows"],
+        summary["min_snapshot_date"],
+        summary["max_snapshot_date"],
+    )
+
+
+def _count_rows_between(spark: SparkSession, table_name: str, window_start_date: date, window_end_date: date) -> int:
+    return (
+        spark.table(table_name)
+        .filter(F.col("snapshot_date").between(window_start_date, window_end_date))
+        .count()
+    )
+
 def bronze_history_backfill_path(
     anchor_snapshot_date: date,
     backfill_days: int,
@@ -225,6 +251,15 @@ def validate_history_backfill_result(
         .count()
     )
 
+    logger.info(
+        "History backfill validation window=%s..%s snapshots=%s asset_market_caps=%s total_market_caps=%s",
+        window_start_date,
+        window_end_date,
+        snapshot_count,
+        asset_market_cap_count,
+        total_market_cap_count,
+    )
+
     if snapshot_count == 0:
         raise ValueError("price_snapshots backfill wrote no rows")
     if asset_market_cap_count == 0:
@@ -240,6 +275,19 @@ def transform_history_backfill(
     catalog_name: str = "silver",
 ) -> None:
     """Read Bronze history backfill datasets and merge them into Silver."""
+    window_start_date = anchor_snapshot_date.fromordinal(
+        anchor_snapshot_date.toordinal() - backfill_days
+    )
+    window_end_date = anchor_snapshot_date.fromordinal(anchor_snapshot_date.toordinal() - 1)
+
+    logger.info(
+        "Starting Silver history backfill anchor=%s backfill_days=%s window=%s..%s",
+        anchor_snapshot_date,
+        backfill_days,
+        window_start_date,
+        window_end_date,
+    )
+
     asset_history_raw = read_history_bronze(
         spark,
         anchor_snapshot_date,
@@ -263,6 +311,10 @@ def transform_history_backfill(
     asset_market_cap_df = clean_asset_market_cap_history(asset_market_cap_raw)
     total_market_cap_df = clean_total_market_cap_history(total_market_cap_raw)
 
+    _log_df_summary("clean_asset_history", price_history_df)
+    _log_df_summary("clean_asset_market_cap_history", asset_market_cap_df)
+    _log_df_summary("clean_total_market_cap_history", total_market_cap_df)
+
     _create_tables_if_not_exist(spark, catalog_name=catalog_name)
     merge_price_snapshots(
         spark,
@@ -279,6 +331,15 @@ def transform_history_backfill(
         spark,
         total_market_cap_df,
         catalog_name=catalog_name,
+    )
+
+    logger.info(
+        "Post-merge row counts window=%s..%s snapshots=%s asset_market_caps=%s total_market_caps=%s",
+        window_start_date,
+        window_end_date,
+        _count_rows_between(spark, f"{catalog_name}.crypto.price_snapshots", window_start_date, window_end_date),
+        _count_rows_between(spark, f"{catalog_name}.crypto.asset_market_cap_history", window_start_date, window_end_date),
+        _count_rows_between(spark, f"{catalog_name}.crypto.total_market_cap_history", window_start_date, window_end_date),
     )
 
 
@@ -324,3 +385,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

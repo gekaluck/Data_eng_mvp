@@ -121,10 +121,12 @@ class TestDagIntegrity:
             t.task_id for t in wait_task.downstream_list
         }
 
-    def test_silver_history_backfill_dag_has_no_manual_params(self, dagbag):
-        """Silver history backfill DAG should consume the Bronze-resolved plan via conf."""
+    def test_silver_history_backfill_dag_has_manual_rerun_params(self, dagbag):
+        """Silver history backfill DAG should support manual reruns from the UI."""
         dag = dagbag.dags["silver_coincap_history_backfill"]
-        assert dag.params == {}
+        assert "anchor_snapshot_date" in dag.params
+        assert "backfill_days" in dag.params
+        assert "coin_ids" in dag.params
 
     def test_silver_history_backfill_dag_tags(self, dagbag):
         """Silver history backfill DAG should be tagged for filtering in the UI."""
@@ -153,3 +155,5 @@ class TestDagIntegrity:
         dag = dagbag.dags["gold_coincap_assets"]
         assert "gold" in dag.tags
         assert "coincap" in dag.tags
+
+

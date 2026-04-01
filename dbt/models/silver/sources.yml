@@ -1,0 +1,38 @@
+version: 2
+
+sources:
+  - name: silver
+    description: "Silver-layer Iceberg tables managed by Spark and queried through Trino."
+    database: silver
+    schema: crypto
+    tables:
+      - name: coins
+        description: "Latest coin attributes keyed by CoinCap asset id."
+        columns:
+          - name: id
+            tests:
+              - not_null
+      - name: price_snapshots
+        description: "Daily per-coin price and market metrics."
+        columns:
+          - name: coin_id
+            tests:
+              - not_null
+          - name: snapshot_date
+            tests:
+              - not_null
+      - name: asset_market_cap_history
+        description: "Historical market cap snapshots per coin."
+        columns:
+          - name: coin_id
+            tests:
+              - not_null
+          - name: snapshot_date
+            tests:
+              - not_null
+      - name: total_market_cap_history
+        description: "Historical total crypto market capitalization by day."
+        columns:
+          - name: snapshot_date
+            tests:
+              - not_null

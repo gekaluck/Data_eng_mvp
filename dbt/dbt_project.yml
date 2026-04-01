@@ -1,0 +1,24 @@
+name: "crypto_lakehouse"
+version: "1.0.0"
+config-version: 2
+
+profile: "crypto_lakehouse"
+
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages", "logs"]
+
+models:
+  crypto_lakehouse:
+    gold:
+      +database: gold
+      +materialized: table
+      daily_snapshot:
+        +materialized: table
+        +alias: daily_snapshot
+      mc_rank_change:
+        +materialized: table
+        +alias: mc_rank_change
+      weekly_roll_avg:
+        +materialized: table
+        +alias: weekly_roll_avg

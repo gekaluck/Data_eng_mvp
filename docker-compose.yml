@@ -16,6 +16,9 @@ x-airflow-common: &airflow-common
   image: data-eng-mvp-airflow:latest
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: ${POSTGRES_DB}
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY:?Fernet key must be set in .env}
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
@@ -35,6 +38,10 @@ x-airflow-common: &airflow-common
 
     # MinIO endpoint — used by the silver PySpark job to configure S3A
     MINIO_ENDPOINT: "http://minio:9000"
+    ICEBERG_CATALOG_HOST: ${ICEBERG_CATALOG_HOST:-postgres}
+    ICEBERG_CATALOG_PORT: ${ICEBERG_CATALOG_PORT:-5432}
+    ICEBERG_SILVER_CATALOG_DB: ${ICEBERG_SILVER_CATALOG_DB:-iceberg_silver}
+    ICEBERG_GOLD_CATALOG_DB: ${ICEBERG_GOLD_CATALOG_DB:-iceberg_gold}
 
     # MinIO S3 connection — set via env var so it's reproducible (no UI clicks needed)
     # Format: aws://<access_key>:<secret_key>@?host=http://minio:9000&extra__aws__endpoint_url=http://minio:9000
@@ -55,6 +62,8 @@ x-airflow-common: &airflow-common
   depends_on:
     postgres:
       condition: service_healthy
+    iceberg-catalog-init:
+      condition: service_completed_successfully
 
 # ---------------------------------------------------------------------------
 # Services
@@ -82,6 +91,27 @@ services:
   # -------------------------------------------------------------------------
   # MinIO — S3-compatible object storage (the "data lake")
   # -------------------------------------------------------------------------
+  iceberg-catalog-init:
+    image: postgres:16
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      export PGPASSWORD=${POSTGRES_PASSWORD} &&
+      psql -h postgres -U ${POSTGRES_USER} -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = '${ICEBERG_SILVER_CATALOG_DB:-iceberg_silver}'\" | grep -q 1 ||
+      psql -h postgres -U ${POSTGRES_USER} -d postgres -c \"CREATE DATABASE ${ICEBERG_SILVER_CATALOG_DB:-iceberg_silver}\" &&
+      psql -h postgres -U ${POSTGRES_USER} -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = '${ICEBERG_GOLD_CATALOG_DB:-iceberg_gold}'\" | grep -q 1 ||
+      psql -h postgres -U ${POSTGRES_USER} -d postgres -c \"CREATE DATABASE ${ICEBERG_GOLD_CATALOG_DB:-iceberg_gold}\" &&
+      psql -h postgres -U ${POSTGRES_USER} -d ${ICEBERG_SILVER_CATALOG_DB:-iceberg_silver} -c \"CREATE TABLE IF NOT EXISTS iceberg_tables (catalog_name VARCHAR(255) NOT NULL, table_namespace VARCHAR(255) NOT NULL, table_name VARCHAR(255) NOT NULL, metadata_location VARCHAR(1000), previous_metadata_location VARCHAR(1000), PRIMARY KEY (catalog_name, table_namespace, table_name))\" &&
+      psql -h postgres -U ${POSTGRES_USER} -d ${ICEBERG_SILVER_CATALOG_DB:-iceberg_silver} -c \"ALTER TABLE iceberg_tables ADD COLUMN IF NOT EXISTS iceberg_type VARCHAR(5)\" &&
+      psql -h postgres -U ${POSTGRES_USER} -d ${ICEBERG_SILVER_CATALOG_DB:-iceberg_silver} -c \"CREATE TABLE IF NOT EXISTS iceberg_namespace_properties (catalog_name VARCHAR(255) NOT NULL, namespace VARCHAR(255) NOT NULL, property_key VARCHAR(255), property_value VARCHAR(1000), PRIMARY KEY (catalog_name, namespace, property_key))\" &&
+      psql -h postgres -U ${POSTGRES_USER} -d ${ICEBERG_GOLD_CATALOG_DB:-iceberg_gold} -c \"CREATE TABLE IF NOT EXISTS iceberg_tables (catalog_name VARCHAR(255) NOT NULL, table_namespace VARCHAR(255) NOT NULL, table_name VARCHAR(255) NOT NULL, metadata_location VARCHAR(1000), previous_metadata_location VARCHAR(1000), PRIMARY KEY (catalog_name, table_namespace, table_name))\" &&
+      psql -h postgres -U ${POSTGRES_USER} -d ${ICEBERG_GOLD_CATALOG_DB:-iceberg_gold} -c \"ALTER TABLE iceberg_tables ADD COLUMN IF NOT EXISTS iceberg_type VARCHAR(5)\" &&
+      psql -h postgres -U ${POSTGRES_USER} -d ${ICEBERG_GOLD_CATALOG_DB:-iceberg_gold} -c \"CREATE TABLE IF NOT EXISTS iceberg_namespace_properties (catalog_name VARCHAR(255) NOT NULL, namespace VARCHAR(255) NOT NULL, property_key VARCHAR(255), property_value VARCHAR(1000), PRIMARY KEY (catalog_name, namespace, property_key))\" &&
+      echo 'Iceberg catalog databases are ready'
+      "
+
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
@@ -206,6 +236,34 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+      iceberg-catalog-init:
+        condition: service_completed_successfully
+
+  trino:
+    image: trinodb/trino:477
+    ports:
+      - "8081:8080"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ENDPOINT: "http://minio:9000"
+      ICEBERG_SILVER_CATALOG_DB: ${ICEBERG_SILVER_CATALOG_DB:-iceberg_silver}
+      ICEBERG_GOLD_CATALOG_DB: ${ICEBERG_GOLD_CATALOG_DB:-iceberg_gold}
+    volumes:
+      - ./config/trino/config.properties:/etc/trino/config.properties:ro
+      - ./config/trino/node.properties:/etc/trino/node.properties:ro
+      - ./config/trino/jvm.config:/etc/trino/jvm.config:ro
+      - ./config/trino/catalog:/etc/trino/catalog:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      iceberg-catalog-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
 # ---------------------------------------------------------------------------
 # Named volumes (persist data across restarts)
