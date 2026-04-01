@@ -1,0 +1,5 @@
+﻿# dbt dependencies installed separately from the Airflow-constrained base deps.
+# Installing these outside the Airflow constraints avoids dependency resolution conflicts.
+
+dbt-core~=1.10.0
+dbt-trino~=1.10.0

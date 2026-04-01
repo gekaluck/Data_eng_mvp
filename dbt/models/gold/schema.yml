@@ -1,0 +1,68 @@
+version: 2
+
+models:
+  - name: daily_snapshot
+    description: Daily Gold snapshot with current price, prior-day price, and ranked daily percentage change.
+    tests:
+      - unique:
+          column_name: "concat(cast(snapshot_date as varchar), '::', coin_id)"
+    columns:
+      - name: snapshot_date
+        description: Snapshot date for the daily Gold record.
+        tests:
+          - not_null
+      - name: coin_id
+        description: Stable CoinCap coin identifier.
+        tests:
+          - not_null
+          - relationships:
+              to: source('silver', 'coins')
+              field: id
+      - name: price_usd
+        description: Coin price in USD on the snapshot date.
+        tests:
+          - not_null
+
+  - name: mc_rank_change
+    description: Daily Gold view of market-cap rank and rank deltas versus 14-day and 30-day lookbacks.
+    tests:
+      - unique:
+          column_name: "concat(cast(snapshot_date as varchar), '::', coin_id)"
+    columns:
+      - name: snapshot_date
+        description: Snapshot date for the daily Gold record.
+        tests:
+          - not_null
+      - name: coin_id
+        description: Stable CoinCap coin identifier.
+        tests:
+          - not_null
+          - relationships:
+              to: source('silver', 'coins')
+              field: id
+      - name: price_usd
+        description: Coin price in USD on the snapshot date.
+        tests:
+          - not_null
+
+  - name: wkly_roll_avg
+    description: Daily Gold view of 7-row rolling average price and volume metrics by coin.
+    tests:
+      - unique:
+          column_name: "concat(cast(snapshot_date as varchar), '::', coin_id)"
+    columns:
+      - name: snapshot_date
+        description: Snapshot date for the daily Gold record.
+        tests:
+          - not_null
+      - name: coin_id
+        description: Stable CoinCap coin identifier.
+        tests:
+          - not_null
+          - relationships:
+              to: source('silver', 'coins')
+              field: id
+      - name: price_usd
+        description: Coin price in USD on the snapshot date.
+        tests:
+          - not_null

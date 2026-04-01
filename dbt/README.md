@@ -1,17 +1,58 @@
-# dbt + Trino
+﻿# dbt + Trino
 
-This project is initialized for dbt against the local Trino service exposed by
-Docker Compose on `localhost:8081`.
+This project is initialized for dbt against the local Trino service. On the host,
+Trino is exposed at `localhost:8081`. Inside the Airflow containers, dbt connects
+to the `trino` service on port `8080`.
 
 ## Quick start
 
-1. Install `dbt-trino` in the environment where you plan to run dbt.
-2. Copy `profiles.yml.example` to `profiles.yml`.
-3. Run `dbt debug --project-dir . --profiles-dir .`
-4. Run `dbt ls --project-dir . --profiles-dir .`
+1. Make sure Trino is running.
+2. Run the connection check:
 
-The default target writes models to the `gold.crypto` schema in Trino. Silver
+   ```bash
+   dbt debug --project-dir dbt --profiles-dir dbt
+   ```
+
+3. Inspect models and sources:
+
+   ```bash
+   dbt ls --project-dir dbt --profiles-dir dbt
+   ```
+
+4. Run the Gold models for one logical date:
+
+   ```bash
+   dbt run --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg --vars '{"snapshot_date": "2026-04-01"}'
+   ```
+
+The default target writes models to the `gold.crypto_dbt` schema in Trino. Silver
 tables are declared as sources under the `silver` catalog.
+
+## dbt docs
+
+Generate docs metadata and the catalog:
+
+```bash
+dbt docs generate --project-dir dbt --profiles-dir dbt
+```
+
+Serve the docs site locally:
+
+```bash
+dbt docs serve --project-dir dbt --profiles-dir dbt --port 8082
+```
+
+The lineage graph is most useful after the Gold models and tests are in place.
+
+## Airflow integration
+
+The regular Silver DAG now triggers two Gold DAGs in parallel:
+
+- `gold_coincap_assets` for the Spark Gold path
+- `gold_dbt_coincap_assets` for the dbt Gold path
+
+The dbt DAG supports manual runs through the same `target_date` parameter used by
+other regular DAGs.
 
 ## Important note about existing local data
 
