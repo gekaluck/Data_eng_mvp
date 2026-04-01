@@ -119,7 +119,9 @@ def bronze_coincap_assets():
     trigger_silver = TriggerDagRunOperator(
         task_id="trigger_silver_assets",
         trigger_dag_id="silver_coincap_assets",
-        conf={"target_date": "{{ ds }}"},
+        conf={
+            "target_date": "{{ dag_run.conf.get('target_date', ds) if dag_run and dag_run.conf else ds }}"
+        },
         wait_for_completion=False,
     )
 
@@ -127,3 +129,4 @@ def bronze_coincap_assets():
 
 
 bronze_coincap_assets()
+

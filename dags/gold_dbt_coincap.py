@@ -21,7 +21,7 @@ def validate_envvars(envvars: dict[str, str]) -> None:
     """Ensure required environment variables exist before launching dbt."""
     missing_envvars = [var for var in REQUIRED_ENVVARS if not envvars.get(var)]
     if missing_envvars:
-        raise EnvironmentError(
+        raise RuntimeError(
             f"Missing required environment variables: {', '.join(missing_envvars)}"
         )
 
@@ -101,4 +101,5 @@ def gold_dbt_coincap_assets():
 
 
 gold_dbt_coincap_assets()
+
 
