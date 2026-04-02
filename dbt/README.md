@@ -1,4 +1,4 @@
-﻿# dbt + Trino
+# dbt + Trino
 
 This project is initialized for dbt against the local Trino service. On the host,
 Trino is exposed at `localhost:8081`. Inside the Airflow containers, dbt connects
@@ -46,13 +46,19 @@ The lineage graph is most useful after the Gold models and tests are in place.
 
 ## Airflow integration
 
-The regular Silver DAG now triggers two Gold DAGs in parallel:
+The regular Airflow entrypoint is now:
 
-- `gold_coincap_assets` for the Spark Gold path
-- `gold_dbt_coincap_assets` for the dbt Gold path
+- `coincap_regular_orchestrator`
 
-The dbt DAG supports manual runs through the same `target_date` parameter used by
-other regular DAGs.
+That orchestrator triggers:
+
+1. Bronze
+2. Silver
+3. `gold_coincap_assets` and `gold_dbt_coincap_assets` in parallel
+4. `gold_dbt_coincap_tests` after the dbt build succeeds
+
+The dbt Gold build DAG and dbt test DAG also support manual runs through the same
+`target_date` parameter used by the other regular DAGs.
 
 ## Important note about existing local data
 
@@ -60,3 +66,4 @@ This repo now uses Iceberg JDBC catalogs for Spark and Trino. If you already
 created Silver or Gold tables with the previous Hadoop catalog setup, rerun the
 Spark jobs to recreate them in the JDBC catalog, or register the existing table
 locations into Trino before using dbt.
+

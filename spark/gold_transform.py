@@ -85,7 +85,7 @@ def _create_tables_if_not_exist(
             coin_id STRING NOT NULL COMMENT 'CoinCap identifier (e.g. bitcoin)',
             symbol STRING COMMENT 'Trading symbol (e.g. BTC)',
             name STRING COMMENT 'Full display name (e.g. Bitcoin)',
-            coin_rank INT COMMENT 'Latest coin rank from Silver metadata',
+            coin_rank INT COMMENT 'Market-cap rank on the logical snapshot date',
             price_usd DOUBLE COMMENT 'Price in USD on the logical snapshot date',
             prev_price_usd DOUBLE COMMENT 'Previous available snapshot price in USD',
             price_change_pct DOUBLE COMMENT 'Percent price change vs the previous snapshot',
@@ -155,6 +155,7 @@ def build_daily_snapshot(
 
     price_window = Window.partitionBy("coin_id").orderBy("snapshot_date")
     ranked_window = Window.orderBy(F.desc("price_change_pct"))
+    coin_rank_window = Window.orderBy(F.desc("market_cap_usd"))
 
     ranked_df = (
         snapshots_df
@@ -167,6 +168,7 @@ def build_daily_snapshot(
         )
         .where(F.col("prev_price_usd").isNotNull())
         .where(F.col("snapshot_date") == F.lit(logical_date))
+        .withColumn("coin_rank", F.rank().over(coin_rank_window).cast("int"))
         .withColumn("price_change_rank", F.rank().over(ranked_window))
     )
 
@@ -174,7 +176,6 @@ def build_daily_snapshot(
         F.col("id").alias("coin_id"),
         "symbol",
         "name",
-        F.col("rank").alias("coin_rank"),
     )
 
     return ranked_df.join(coins_df, on="coin_id", how="left").select(

@@ -28,7 +28,7 @@ def validate_envvars(envvars: dict[str, str]) -> None:
 @dag(
     dag_id="gold_coincap_assets",
     description="Transform CoinCap Silver Iceberg tables into Gold Iceberg tables",
-    schedule="@daily",
+    schedule=None,
     start_date=datetime(2025, 1, 1),
     catchup=False,
     params={

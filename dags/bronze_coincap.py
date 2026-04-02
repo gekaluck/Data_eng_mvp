@@ -21,7 +21,6 @@ import pyarrow.parquet as pq
 import requests
 from airflow.decorators import dag, task
 from airflow.models.param import Param
-from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from pendulum import datetime, duration
 
@@ -43,7 +42,7 @@ S3_CONN_ID = "minio_s3"
 @dag(
     dag_id="bronze_coincap_assets",
     description="Fetch CoinCap top assets and store raw Parquet in Bronze",
-    schedule="@daily",
+    schedule=None,
     start_date=datetime(2025, 1, 1),
     catchup=False,
     params={
@@ -115,17 +114,7 @@ def bronze_coincap_assets():
         )
         logger.info("Uploaded to s3://%s/%s", BRONZE_BUCKET, s3_key)
 
-    bronze_task = fetch_validate_upload()
-    trigger_silver = TriggerDagRunOperator(
-        task_id="trigger_silver_assets",
-        trigger_dag_id="silver_coincap_assets",
-        conf={
-            "target_date": "{{ dag_run.conf.get('target_date', ds) if dag_run and dag_run.conf else ds }}"
-        },
-        wait_for_completion=False,
-    )
-
-    bronze_task >> trigger_silver
+    fetch_validate_upload()
 
 
 bronze_coincap_assets()

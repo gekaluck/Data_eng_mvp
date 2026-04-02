@@ -1,4 +1,4 @@
-﻿# Table Browser
+# Table Browser
 
 ## Purpose
 
@@ -96,6 +96,17 @@ The runtime exposes:
    dbt docs generate --project-dir dbt --profiles-dir dbt
    dbt docs serve --project-dir dbt --profiles-dir dbt --port 8082
    ```
+
+## Airflow integration
+
+The regular daily entrypoint is now:
+
+- `coincap_regular_orchestrator`
+
+That DAG runs Bronze -> Silver -> Spark Gold and dbt Gold in parallel, then runs
+`gold_dbt_coincap_tests` after the dbt build succeeds.
+
+The leaf DAGs remain available for manual reruns and debugging.
 
 ## Important migration note
 

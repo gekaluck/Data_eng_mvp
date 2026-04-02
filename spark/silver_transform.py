@@ -84,11 +84,13 @@ def _create_tables_if_not_exist(
             id STRING NOT NULL COMMENT 'CoinCap identifier (e.g. bitcoin)',
             symbol STRING COMMENT 'Trading symbol (e.g. BTC)',
             name STRING COMMENT 'Full display name (e.g. Bitcoin)',
-            rank INT COMMENT 'Market-cap rank at last observation',
             supply DOUBLE COMMENT 'Circulating supply',
             max_supply DOUBLE COMMENT 'Maximum supply; null means uncapped'
         ) USING iceberg
         """
+    )
+    spark.sql(
+        f"ALTER TABLE {catalog_name}.crypto.coins DROP COLUMN IF EXISTS rank"
     )
 
     spark.sql(
@@ -147,7 +149,6 @@ def clean_and_cast_bronze(raw_df):
         F.col("id"),
         F.col("symbol"),
         F.col("name"),
-        F.col("rank").cast("int").alias("rank"),
         F.col("supply").cast("double").alias("supply"),
         F.col("maxSupply").cast("double").alias("max_supply"),
         F.col("priceUsd").cast("double").alias("price_usd"),
@@ -184,7 +185,7 @@ def upsert_coins(
     catalog_name: str = "silver",
 ) -> None:
     """Upsert coin metadata into the target Iceberg table."""
-    coins_df = cleaned_df.select("id", "symbol", "name", "rank", "supply", "max_supply")
+    coins_df = cleaned_df.select("id", "symbol", "name", "supply", "max_supply")
     coins_df.createOrReplaceTempView("coins_today")
     spark.sql(
         f"""

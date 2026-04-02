@@ -1,4 +1,4 @@
-﻿{{ config(alias='daily_snapshot',
+{{ config(alias='daily_snapshot',
 materialized='incremental',
 incremental_strategy='merge',
 unique_key=['snapshot_date', 'coin_id'],
@@ -47,6 +47,12 @@ ranked_snapshot as (
         snapshot_date,
         price_usd,
         prev_price_usd,
+        cast(
+            rank() over (
+                partition by snapshot_date
+                order by market_cap_usd desc
+            ) as integer
+        ) as coin_rank,
         ((price_usd - prev_price_usd) / nullif(prev_price_usd, 0)) * 100.0 as price_change_pct,
         cast(
             rank() over (
@@ -69,8 +75,7 @@ coins as (
     select
         id as coin_id,
         symbol,
-        name,
-        rank as coin_rank
+        name
     from {{ source('silver', 'coins') }}
 )
 
@@ -79,7 +84,7 @@ select
     ranked_snapshot.coin_id,
     coins.symbol,
     coins.name,
-    coins.coin_rank,
+    ranked_snapshot.coin_rank,
     ranked_snapshot.price_usd,
     ranked_snapshot.prev_price_usd,
     ranked_snapshot.price_change_pct,

@@ -51,7 +51,6 @@ def _create_silver_seed_tables(spark):
             id STRING NOT NULL,
             symbol STRING,
             name STRING,
-            rank INT,
             supply DOUBLE,
             max_supply DOUBLE
         ) USING iceberg
@@ -82,7 +81,6 @@ def test_transform_builds_ranked_daily_snapshot_for_logical_date(spark):
                 "id": "bitcoin",
                 "symbol": "BTC",
                 "name": "Bitcoin",
-                "rank": 1,
                 "supply": 19500000.0,
                 "max_supply": 21000000.0,
             },
@@ -90,7 +88,6 @@ def test_transform_builds_ranked_daily_snapshot_for_logical_date(spark):
                 "id": "ethereum",
                 "symbol": "ETH",
                 "name": "Ethereum",
-                "rank": 2,
                 "supply": 120000000.0,
                 "max_supply": None,
             },
@@ -98,7 +95,6 @@ def test_transform_builds_ranked_daily_snapshot_for_logical_date(spark):
                 "id": "dogecoin",
                 "symbol": "DOGE",
                 "name": "Dogecoin",
-                "rank": 8,
                 "supply": 1000000000.0,
                 "max_supply": None,
             },
@@ -308,10 +304,11 @@ def test_transform_builds_ranked_daily_snapshot_for_logical_date(spark):
 
     assert set(rows) == {"bitcoin", "ethereum"}
     assert rows["bitcoin"]["symbol"] == "BTC"
-    assert rows["bitcoin"]["coin_rank"] == 1
+    assert rows["bitcoin"]["coin_rank"] == 2
     assert rows["bitcoin"]["prev_price_usd"] == pytest.approx(100.0)
     assert rows["bitcoin"]["price_change_pct"] == pytest.approx(20.0)
     assert rows["bitcoin"]["price_change_rank"] == 1
+    assert rows["ethereum"]["coin_rank"] == 1
     assert rows["ethereum"]["prev_price_usd"] == pytest.approx(200.0)
     assert rows["ethereum"]["price_change_pct"] == pytest.approx(5.0)
     assert rows["ethereum"]["price_change_rank"] == 2
