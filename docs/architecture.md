@@ -18,25 +18,25 @@ The system follows a **lakehouse-style** architecture with three layers:
 [CoinCap API]
       |
       v
-  Airflow DAG (daily) -> Pydantic validation -> Parquet
+  Airflow orchestrator / manual DAG runs
       |
       v
   Bronze (Parquet in MinIO, date-partitioned)
       |
       v
-  PySpark job (clean, type, deduplicate)
+  PySpark Silver transforms
       |
       v
   Silver (Iceberg tables in MinIO, JDBC catalog metadata in Postgres)
       |
       v
-  PySpark job (aggregate)
+  Spark Gold path + dbt Gold path
       |
       v
   Gold (Iceberg tables in MinIO, JDBC catalog metadata in Postgres)
       |
       v
-  Trino + dbt
+  Trino + dbt + comparison/debugging
 ```
 
 ---
@@ -51,13 +51,18 @@ The system follows a **lakehouse-style** architecture with three layers:
 
 ### Orchestration - Apache Airflow
 - Runs locally via Docker Compose
-- Manages scheduling, retries, backfills, and DAG dependencies
+- Manages scheduling, retries, backfills, DAG dependencies, and the regular orchestrator flow
 - Airflow is a first-class learning target, not just glue
 
 ### Compute - PySpark
 - Local PySpark (Spark 3.5.x)
-- Used for bronze-to-silver and silver-to-gold transformations
+- Used for bronze-to-silver and one Gold implementation
 - Explicit DataFrame API
+
+### Transformation SQL - dbt
+- Runs against the local Trino service
+- Builds a second Gold implementation for learning and comparison
+- Runs tests as SQL assertions in the orchestrated regular flow
 
 ### Query Layer - Trino
 - Single-node Trino runs locally in Docker
@@ -138,6 +143,7 @@ The gold layer optimizes for the reader, not the writer.
 ### Gold
 - **Format**: Iceberg tables (Parquet underneath)
 - **Transformations**: aggregations, window functions, derived metrics
+- **Implementations**: Spark Gold and dbt Gold side by side
 - **Modeling**: analytical and dimensional
 - **Purpose**: analysis-ready datasets
 
