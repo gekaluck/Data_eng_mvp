@@ -183,12 +183,35 @@ class TestDagIntegrity:
         assert "dbt" in dag.tags
         assert "coincap" in dag.tags
 
+    def test_dbt_gold_test_dag_exists(self, dagbag):
+        """The gold_dbt_coincap_tests DAG should be present."""
+        assert "gold_dbt_coincap_tests" in dagbag.dags
+
+    def test_dbt_gold_test_dag_has_one_task(self, dagbag):
+        """dbt Gold test DAG should run the dbt test task only."""
+        dag = dagbag.dags["gold_dbt_coincap_tests"]
+        task_ids = {t.task_id for t in dag.tasks}
+        assert task_ids == {"run_dbt_gold_tests"}
+
+    def test_dbt_gold_test_dag_has_target_date_param(self, dagbag):
+        """dbt Gold test DAG should expose a manual target_date override."""
+        dag = dagbag.dags["gold_dbt_coincap_tests"]
+        assert "target_date" in dag.params
+
+    def test_dbt_gold_test_dag_tags(self, dagbag):
+        """dbt Gold test DAG should be tagged for filtering in the UI."""
+        dag = dagbag.dags["gold_dbt_coincap_tests"]
+        assert "gold" in dag.tags
+        assert "dbt" in dag.tags
+        assert "test" in dag.tags
+        assert "coincap" in dag.tags
+
     def test_orchestrator_dag_exists(self, dagbag):
         """The regular CoinCap orchestrator DAG should be present."""
         assert "coincap_regular_orchestrator" in dagbag.dags
 
     def test_orchestrator_dag_tasks(self, dagbag):
-        """The orchestrator should chain Bronze and Silver, then fan out to both Gold DAGs."""
+        """The orchestrator should chain Bronze and Silver, then run Gold branches with dbt tests."""
         dag = dagbag.dags["coincap_regular_orchestrator"]
         task_ids = {t.task_id for t in dag.tasks}
         assert task_ids == {
@@ -196,10 +219,11 @@ class TestDagIntegrity:
             "trigger_silver_assets",
             "trigger_gold_assets",
             "trigger_gold_dbt_assets",
+            "trigger_gold_dbt_tests",
         }
 
     def test_orchestrator_dag_task_order(self, dagbag):
-        """The orchestrator should run Bronze, then Silver, then both Gold branches."""
+        """The orchestrator should run Bronze, then Silver, then Gold with dbt tests after dbt build."""
         dag = dagbag.dags["coincap_regular_orchestrator"]
         bronze_task = dag.get_task("trigger_bronze_assets")
         assert "trigger_silver_assets" in {t.task_id for t in bronze_task.downstream_list}
@@ -207,3 +231,7 @@ class TestDagIntegrity:
         downstream_ids = {t.task_id for t in silver_task.downstream_list}
         assert "trigger_gold_assets" in downstream_ids
         assert "trigger_gold_dbt_assets" in downstream_ids
+        dbt_gold_task = dag.get_task("trigger_gold_dbt_assets")
+        assert "trigger_gold_dbt_tests" in {
+            t.task_id for t in dbt_gold_task.downstream_list
+        }

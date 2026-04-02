@@ -62,8 +62,17 @@ def coincap_regular_orchestrator():
         wait_for_completion=True,
         poke_interval=15,
     )
+    trigger_dbt_gold_tests = TriggerDagRunOperator(
+        task_id="trigger_gold_dbt_tests",
+        trigger_dag_id="gold_dbt_coincap_tests",
+        conf=TRIGGER_CONF,
+        wait_for_completion=True,
+        poke_interval=15,
+    )
 
-    trigger_bronze >> trigger_silver >> [trigger_spark_gold, trigger_dbt_gold]
+    trigger_bronze >> trigger_silver
+    trigger_silver >> trigger_spark_gold
+    trigger_silver >> trigger_dbt_gold >> trigger_dbt_gold_tests
 
 
 coincap_regular_orchestrator()
