@@ -78,7 +78,6 @@ def test_clean_and_cast_bronze_casts_strings_to_expected_types(spark, bronze_row
         "id",
         "symbol",
         "name",
-        "rank",
         "supply",
         "max_supply",
         "price_usd",
@@ -87,7 +86,6 @@ def test_clean_and_cast_bronze_casts_strings_to_expected_types(spark, bronze_row
         "change_percent_24hr",
         "vwap_24hr",
     ]
-    assert rows["bitcoin"]["rank"] == 1
     assert rows["bitcoin"]["price_usd"] == pytest.approx(63000.123456789)
     assert rows["ethereum"]["max_supply"] is None
 
@@ -122,6 +120,6 @@ def test_transform_writes_both_silver_tables(spark, bronze_rows, tmp_path):
     }
 
     assert set(coins) == {"bitcoin", "ethereum"}
-    assert coins["bitcoin"]["rank"] == 1
+    assert "rank" not in coins["bitcoin"]
     assert snapshots["bitcoin"]["snapshot_date"] == TARGET_DATE
     assert snapshots["ethereum"]["price_usd"] == pytest.approx(3400.5)

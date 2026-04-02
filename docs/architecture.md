@@ -101,7 +101,7 @@ different modeling philosophy, and understanding why is as important as the code
 In the silver layer we identify **entities** and give each one a clean, typed table.
 For crypto data, the core entities are:
 
-- **Coin**: static or slow-changing attributes such as name, symbol, and rank
+- **Coin**: static or slow-changing attributes such as name and symbol
 - **Price snapshot**: time-series facts such as price, volume, and market cap
 
 Separating these is deliberate:
