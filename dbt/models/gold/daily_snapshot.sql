@@ -1,4 +1,4 @@
-﻿{{ config(alias='daily_snapshot',
+{{ config(alias='daily_snapshot',
 materialized='incremental',
 incremental_strategy='merge',
 unique_key=['snapshot_date', 'coin_id'],

@@ -24,19 +24,16 @@ class TestDagIntegrity:
         assert "bronze_coincap_assets" in dagbag.dags
 
     def test_bronze_dag_tasks(self, dagbag):
-        """Bronze DAG should fetch data and then trigger Silver."""
+        """Bronze DAG should only fetch data when run directly."""
         dag = dagbag.dags["bronze_coincap_assets"]
         task_ids = {t.task_id for t in dag.tasks}
-        assert task_ids == {
-            "fetch_validate_upload",
-            "trigger_silver_assets",
-        }
+        assert task_ids == {"fetch_validate_upload"}
 
     def test_bronze_dag_task_order(self, dagbag):
-        """Bronze fetch should be upstream of the Silver trigger."""
+        """Bronze DAG should have no downstream chaining when run directly."""
         dag = dagbag.dags["bronze_coincap_assets"]
         fetch_task = dag.get_task("fetch_validate_upload")
-        assert "trigger_silver_assets" in {t.task_id for t in fetch_task.downstream_list}
+        assert fetch_task.downstream_list == []
 
     def test_bronze_dag_has_target_date_param(self, dagbag):
         """Bronze DAG should expose a manual target_date override."""
@@ -85,25 +82,16 @@ class TestDagIntegrity:
         assert "silver_coincap_assets" in dagbag.dags
 
     def test_silver_dag_tasks(self, dagbag):
-        """Silver DAG must wait, transform, then trigger Spark Gold and dbt Gold in parallel."""
+        """Silver DAG must wait for Bronze, then run the Spark transform when run directly."""
         dag = dagbag.dags["silver_coincap_assets"]
         task_ids = {t.task_id for t in dag.tasks}
-        assert task_ids == {
-            "wait_for_bronze",
-            "run_silver_transform",
-            "trigger_gold_assets",
-            "trigger_gold_dbt_assets",
-        }
+        assert task_ids == {"wait_for_bronze", "run_silver_transform"}
 
     def test_silver_dag_task_order(self, dagbag):
-        """Silver sensor should be upstream of transform, then both Gold triggers."""
+        """Silver sensor should be upstream of the transform task."""
         dag = dagbag.dags["silver_coincap_assets"]
         wait_task = dag.get_task("wait_for_bronze")
         assert "run_silver_transform" in {t.task_id for t in wait_task.downstream_list}
-        silver_task = dag.get_task("run_silver_transform")
-        downstream_ids = {t.task_id for t in silver_task.downstream_list}
-        assert "trigger_gold_assets" in downstream_ids
-        assert "trigger_gold_dbt_assets" in downstream_ids
 
     def test_silver_dag_has_target_date_param(self, dagbag):
         """Silver DAG should expose a manual target_date override."""
@@ -194,3 +182,28 @@ class TestDagIntegrity:
         assert "gold" in dag.tags
         assert "dbt" in dag.tags
         assert "coincap" in dag.tags
+
+    def test_orchestrator_dag_exists(self, dagbag):
+        """The regular CoinCap orchestrator DAG should be present."""
+        assert "coincap_regular_orchestrator" in dagbag.dags
+
+    def test_orchestrator_dag_tasks(self, dagbag):
+        """The orchestrator should chain Bronze and Silver, then fan out to both Gold DAGs."""
+        dag = dagbag.dags["coincap_regular_orchestrator"]
+        task_ids = {t.task_id for t in dag.tasks}
+        assert task_ids == {
+            "trigger_bronze_assets",
+            "trigger_silver_assets",
+            "trigger_gold_assets",
+            "trigger_gold_dbt_assets",
+        }
+
+    def test_orchestrator_dag_task_order(self, dagbag):
+        """The orchestrator should run Bronze, then Silver, then both Gold branches."""
+        dag = dagbag.dags["coincap_regular_orchestrator"]
+        bronze_task = dag.get_task("trigger_bronze_assets")
+        assert "trigger_silver_assets" in {t.task_id for t in bronze_task.downstream_list}
+        silver_task = dag.get_task("trigger_silver_assets")
+        downstream_ids = {t.task_id for t in silver_task.downstream_list}
+        assert "trigger_gold_assets" in downstream_ids
+        assert "trigger_gold_dbt_assets" in downstream_ids
