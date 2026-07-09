@@ -1,0 +1,46 @@
+name: CI
+
+# Deliberately cheap and honest: static checks only. This workflow does NOT
+# start Docker, Airflow, Spark, MinIO, or Trino, and does NOT run the pipeline
+# end-to-end (that needs a full `docker compose up` and a real COINCAP_API_KEY).
+# It catches syntax errors, obvious Python mistakes, and dbt project breakage.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint for errors (syntax + undefined names)
+        # Error-class rules only — this is a correctness gate, not a style gate.
+        run: ruff check --select E9,F63,F7,F82 dags spark tests
+      - name: Compile all modules
+        run: python -m compileall dags spark tests
+
+  dbt:
+    name: dbt parse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dbt (core + trino adapter)
+        run: pip install "dbt-core~=1.10.0" "dbt-trino~=1.10.0"
+      - name: Parse the dbt project
+        # `dbt parse` builds the manifest and validates refs/sources without
+        # opening a Trino connection. The profile resolves from env-var defaults.
+        run: dbt parse --project-dir dbt --profiles-dir dbt
