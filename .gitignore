@@ -1,36 +1,65 @@
-# Python
+# =============================================================================
+# .gitignore — local-first lakehouse stack (Python / Spark / dbt / Airflow /
+# Iceberg / notebooks / IDE)
+# =============================================================================
+
+# --- Python -----------------------------------------------------------------
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .venv/
 venv/
-# Airflow logs (bind-mounted, can be large)
-logs/
-!logs/.gitkeep
+env/
 
-# Docker volumes (if any leak locally)
-postgres-data/
-minio-data/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-
-# Environment variables
+# --- Environment / secrets --------------------------------------------------
 .env
 .env.*
 !.env.example
 
-# dbt artifacts
+# --- Airflow ----------------------------------------------------------------
+# Logs are bind-mounted and can grow large; keep the folder, drop the contents.
+# (plugins/ is a real Airflow source dir and is intentionally NOT ignored.)
+logs/
+!logs/.gitkeep
+
+# --- Docker volumes (if they ever leak onto the host) -----------------------
+postgres-data/
+minio-data/
+airflow-logs/
+
+# --- Spark / Iceberg local warehouse ----------------------------------------
+spark-warehouse/
+metastore_db/
+derby.log
+*.crc
+.ivy2/
+
+# --- dbt --------------------------------------------------------------------
 .dbt/
 dbt/dbt_packages/
 dbt/logs/
 dbt/target/
-# Local dbt/user state
 dbt/.user.yml
-nul
 
+# --- Notebooks --------------------------------------------------------------
+.ipynb_checkpoints/
+
+# --- Data files (never commit lakehouse data) -------------------------------
+*.parquet
+*.avro
+*.orc
+
+# --- IDE / editor -----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+
+# --- OS ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db

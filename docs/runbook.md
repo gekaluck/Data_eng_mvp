@@ -177,6 +177,11 @@ Check:
 ### Infrastructure
 
 ```powershell
+.\scripts\stack.ps1 up
+.\scripts\stack.ps1 up -Rebuild
+.\scripts\stack.ps1 down
+.\scripts\stack.ps1 down -Volumes
+.\scripts\stack.ps1 status
 make build
 make up
 make down

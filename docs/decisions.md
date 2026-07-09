@@ -500,3 +500,34 @@ build, not via `_PIP_ADDITIONAL_REQUIREMENTS` at container startup.
 - **Install deps manually inside running containers**: Fragile and not reproducible.
 - **Separate test image**: More isolation, but unnecessary for a local learning project.
 
+---
+
+## D023 — Iceberg Catalog: JDBC with Postgres (supersedes D020)
+**Date**: 2026-04-01
+**Status**: accepted
+
+**Decision**: Use Iceberg **JDBC catalogs backed by Postgres**, shared by Spark, Trino,
+and dbt (one catalog DB per layer: `iceberg_silver`, `iceberg_gold`). This replaces the
+Hadoop catalog chosen in D020.
+
+**Why**:
+- Trino cannot read the Hadoop (filesystem) catalog, so once Gold needed to be queried
+  from Trino/dbt, D020 stopped working for the multi-engine setup this project now runs.
+- A single JDBC catalog in Postgres gives Spark, Trino, and dbt one shared, consistent
+  view of table metadata — the whole point of running all three against the same tables.
+- Postgres is already in the stack (Airflow metadata DB), so the JDBC catalog adds a
+  database and connection config, not a new service. This also sidesteps the earlier
+  D003 friction (SQLite JAR + stable file path) that originally motivated D020.
+
+**Tradeoffs**:
+- More configuration surface than the Hadoop catalog (catalog DBs, connection settings in
+  the Trino catalog `.properties` files and Spark/dbt configs).
+- Existing Hadoop-catalog metadata is not reused automatically; Silver/Gold tables must be
+  recreated in the JDBC catalog (or their locations registered in Trino). See the
+  migration note in [table_browser.md](table_browser.md).
+
+**Alternatives considered**:
+- **Stay on the Hadoop catalog (D020)**: Rejected — not queryable from Trino.
+- **REST catalog (Nessie / Iceberg REST)**: A stronger production choice for concurrent
+  multi-engine writes, but adds another container and config surface not justified here.
+
