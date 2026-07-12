@@ -1,17 +1,19 @@
 """Tests for target date, backfill window, and Bronze key helpers."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from pendulum import datetime
 
 from utils.run_dates import (
+    MAX_GOLD_RANGE_DAYS,
     bronze_assets_key,
     bronze_history_backfill_key,
     date_to_unix_ms_end,
     date_to_unix_ms_start,
     resolve_backfill_window,
     resolve_target_date,
+    resolve_target_dates,
 )
 
 
@@ -43,6 +45,66 @@ def test_resolve_target_date_rejects_invalid_override():
     }
     with pytest.raises(ValueError):
         resolve_target_date(context)
+
+
+def test_resolve_target_dates_falls_back_to_single_date():
+    context = {
+        "logical_date": datetime(2026, 3, 17, 12, 30, 0),
+        "dag_run": DummyDagRun({"target_date": "2026-03-15"}),
+    }
+    assert resolve_target_dates(context) == [date(2026, 3, 15)]
+
+
+def test_resolve_target_dates_expands_inclusive_range():
+    context = {
+        "logical_date": datetime(2026, 3, 17, 12, 30, 0),
+        "dag_run": DummyDagRun({"start_date": "2026-07-04", "end_date": "2026-07-07"}),
+    }
+    assert resolve_target_dates(context) == [
+        date(2026, 7, 4),
+        date(2026, 7, 5),
+        date(2026, 7, 6),
+        date(2026, 7, 7),
+    ]
+
+
+def test_resolve_target_dates_single_day_range():
+    context = {
+        "logical_date": datetime(2026, 3, 17, 12, 30, 0),
+        "dag_run": DummyDagRun({"start_date": "2026-07-09", "end_date": "2026-07-09"}),
+    }
+    assert resolve_target_dates(context) == [date(2026, 7, 9)]
+
+
+def test_resolve_target_dates_requires_both_range_bounds():
+    context = {
+        "logical_date": datetime(2026, 3, 17, 12, 30, 0),
+        "dag_run": DummyDagRun({"start_date": "2026-07-04"}),
+    }
+    with pytest.raises(ValueError, match="both start_date and end_date"):
+        resolve_target_dates(context)
+
+
+def test_resolve_target_dates_rejects_reversed_range():
+    context = {
+        "logical_date": datetime(2026, 3, 17, 12, 30, 0),
+        "dag_run": DummyDagRun({"start_date": "2026-07-07", "end_date": "2026-07-04"}),
+    }
+    with pytest.raises(ValueError, match="on or after"):
+        resolve_target_dates(context)
+
+
+def test_resolve_target_dates_enforces_safety_cap():
+    start = date(2026, 1, 1)
+    end = start + timedelta(days=MAX_GOLD_RANGE_DAYS)  # one day past the cap
+    context = {
+        "logical_date": datetime(2026, 3, 17, 12, 30, 0),
+        "dag_run": DummyDagRun(
+            {"start_date": start.isoformat(), "end_date": end.isoformat()}
+        ),
+    }
+    with pytest.raises(ValueError, match="safety cap"):
+        resolve_target_dates(context)
 
 
 def test_bronze_assets_key_builds_expected_partition_path():

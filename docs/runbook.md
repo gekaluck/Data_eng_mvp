@@ -60,7 +60,11 @@ Important:
 
 Trigger `gold_coincap_assets` with:
 
-- `target_date=YYYY-MM-DD`
+- `target_date=YYYY-MM-DD` for a single date, **or**
+- `start_date=YYYY-MM-DD` and `end_date=YYYY-MM-DD` to rebuild an inclusive range
+  (each date is built in turn; per-date partition overwrite, so unrelated dates are
+  untouched). Use this after a history backfill to rebuild the whole window in one run.
+  Ranges over `MAX_GOLD_RANGE_DAYS` (366) are rejected as a safety guard.
 
 ### dbt Gold only
 
@@ -84,7 +88,8 @@ Recommended sequence:
 2. Confirm the Bronze window landed in MinIO
 3. Trigger or rerun `silver_coincap_history_backfill` with the same resolved window
 4. Verify Silver tables contain the expected dates
-5. Rebuild affected Gold dates
+5. Rebuild affected Gold dates in one run: trigger `gold_coincap_assets` with
+   `start_date` / `end_date` covering the backfilled window (see "Spark Gold only")
 
 ## Key Validation Queries
 
@@ -151,7 +156,9 @@ Check:
 Check:
 
 - `silver.crypto.price_snapshots` has rows for the requested `snapshot_date`
-- `daily_snapshot` also requires the prior day
+  (with no rows for that date, `daily_snapshot` is genuinely empty and the validator fails)
+- `daily_snapshot` tolerates a missing prior day — the row is kept with a null
+  `price_change_pct` / `price_change_rank`, so a gap no longer empties the table
 - rolling metrics require enough history in Silver
 - 14d/30d comparisons require exact historical dates in Silver
 
