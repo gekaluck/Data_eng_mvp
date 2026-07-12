@@ -586,7 +586,9 @@ exhausted daily/monthly quota.
   and tripped the count validator (`ValueError`) — failing the whole Gold run. Under the
   build-forward strategy (D024) sparse dates are normal, so this hard requirement is wrong.
   We now keep the day's rows and leave `prev_price_usd` / `price_change_pct` null when the
-  prior day is missing. Normal days are unaffected (prev is non-null for every coin).
+  prior day is missing. Normal days are unaffected (prev is non-null for every coin). A coin
+  with a null change is also excluded from `price_change_rank` (left null via a `WHEN` guard,
+  ordering by `desc_nulls_last`) so it never receives an arbitrary rank.
 - **Bronze 429 split**: CoinCap returns HTTP 429 for both the transient per-minute burst
   limit (clears on its own) and a hard daily/monthly quota (does not). The retry loop
   previously retried *both* up to 5× with 60s backoffs. Against an exhausted quota that is

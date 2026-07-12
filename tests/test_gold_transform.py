@@ -302,7 +302,10 @@ def test_transform_builds_ranked_daily_snapshot_for_logical_date(spark):
         for row in spark.table(f"{GOLD_CATALOG_NAME}.crypto.weekly_rolling_average").collect()
     }
 
-    assert set(rows) == {"bitcoin", "ethereum"}
+    # dogecoin has no prior day, so it stays in the snapshot (coverage-gap tolerant)
+    # but with null price change and — crucially — a null price_change_rank rather
+    # than an arbitrary rank. bitcoin/ethereum keep correct, consecutive ranks.
+    assert set(rows) == {"bitcoin", "ethereum", "dogecoin"}
     assert rows["bitcoin"]["symbol"] == "BTC"
     assert rows["bitcoin"]["coin_rank"] == 2
     assert rows["bitcoin"]["prev_price_usd"] == pytest.approx(100.0)
@@ -312,6 +315,9 @@ def test_transform_builds_ranked_daily_snapshot_for_logical_date(spark):
     assert rows["ethereum"]["prev_price_usd"] == pytest.approx(200.0)
     assert rows["ethereum"]["price_change_pct"] == pytest.approx(5.0)
     assert rows["ethereum"]["price_change_rank"] == 2
+    assert rows["dogecoin"]["prev_price_usd"] is None
+    assert rows["dogecoin"]["price_change_pct"] is None
+    assert rows["dogecoin"]["price_change_rank"] is None
 
     assert set(rank_change_rows) == {"bitcoin", "ethereum", "dogecoin"}
     assert rank_change_rows["bitcoin"]["mc_rank"] == 2
