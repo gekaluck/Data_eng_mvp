@@ -5,6 +5,10 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+# Safety cap on how many dates one Gold range run will rebuild, so a fat-fingered
+# start_date can't spin up hundreds of Spark jobs by accident.
+MAX_GOLD_RANGE_DAYS = 366
+
 
 def resolve_target_date(context: dict[str, Any]) -> date:
     """Return the partition date for this run.
@@ -51,6 +55,39 @@ def resolve_optional_date_param(
         raise ValueError(
             f"Invalid {param_name}. Use YYYY-MM-DD when triggering the DAG manually."
         ) from exc
+
+
+def resolve_target_dates(context: dict[str, Any]) -> list[date]:
+    """Return the list of partition dates to process for this run.
+
+    - If both ``start_date`` and ``end_date`` are provided in ``dag_run.conf``, returns
+      the inclusive date range (used to rebuild Gold across a backfilled window).
+    - Otherwise falls back to a single date via ``resolve_target_date`` (the scheduled
+      logical date, or a manual ``target_date`` override).
+    """
+    start_date = resolve_optional_date_param(context, "start_date")
+    end_date = resolve_optional_date_param(context, "end_date")
+
+    if start_date is None and end_date is None:
+        return [resolve_target_date(context)]
+
+    if start_date is None or end_date is None:
+        raise ValueError(
+            "Provide both start_date and end_date (YYYY-MM-DD) to rebuild a range, "
+            "or neither to run a single date."
+        )
+
+    if end_date < start_date:
+        raise ValueError("end_date must be on or after start_date.")
+
+    span_days = (end_date - start_date).days + 1
+    if span_days > MAX_GOLD_RANGE_DAYS:
+        raise ValueError(
+            f"Requested range of {span_days} days exceeds the "
+            f"{MAX_GOLD_RANGE_DAYS}-day safety cap for a single Gold range run."
+        )
+
+    return [start_date + timedelta(days=offset) for offset in range(span_days)]
 
 
 def resolve_int_param(
