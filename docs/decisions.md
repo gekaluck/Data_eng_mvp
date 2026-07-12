@@ -531,3 +531,79 @@ Hadoop catalog chosen in D020.
 - **REST catalog (Nessie / Iceberg REST)**: A stronger production choice for concurrent
   multi-engine writes, but adds another container and config surface not justified here.
 
+---
+
+## D024 — CoinCap Free Tier is Credit-Metered: Build Forward, Don't Backfill Deep (refines D001/D021)
+**Date**: 2026-07-11
+**Status**: accepted
+
+**Decision**: Treat the daily snapshot as the primary way we accumulate history. Deep
+historical backfill on CoinCap is a rare, deliberate, small (~≤5 day) manual operation,
+not a routine part of the pipeline.
+
+**Why**:
+- CoinCap's free tier is capped at **500 credits/month** and is billed by **data volume**,
+  not call count. Empirically, a single 5-day history backfill of our ~20–25 coin universe
+  consumed ~498 of 500 credits — effectively the whole month in one run.
+- The history endpoints also return a **thinner payload** than the daily `/assets` snapshot
+  (only price/marketcap/time; no `vwap24Hr`, no intraday `volumeUsd24Hr`, no rank/symbol/
+  supply). Fields we can derive (rank, day-over-day change) we compute; fields we can't are
+  left null. So backfilled days are inherently lower-fidelity than forward-collected days.
+- The daily DAG makes a single `/assets` call, is full-fidelity, and costs ~1 call/day.
+  Left running, it accrues a real, high-quality series for free. In a month you simply *have*
+  a month of good data — no backfill economics to fight.
+
+**Consequences**:
+- The Gold layer must tolerate coverage gaps (see D025) so a sparse forward-built series
+  still produces tables instead of failing.
+- The Bronze backfill DAG stays in the repo as a manual tool, but is not auto-scheduled and
+  should be run with a small window (≤5 days) and a human deciding it's worth the credits.
+
+**Alternatives considered**:
+- **Keep doing deep backfills on CoinCap**: Rejected — unaffordable on the free tier and
+  low-fidelity for the historical fields.
+- **Switch to CoinGecko for a one-time historical seed**: Viable (more generous free tier,
+  has market-cap history) but requires a parallel ingestion path + schema. Deferred until the
+  project demonstrably *needs* historical depth; build-forward covers the near term.
+
+**Revisit if**: We need meaningful historical depth soon (then plan a one-time CoinGecko seed),
+or we move to a paid CoinCap tier with a larger credit budget.
+
+---
+
+## D025 — Gold Tolerates Coverage Gaps; Bronze Distinguishes Rate-Limit vs Quota 429s
+**Date**: 2026-07-11
+**Status**: accepted
+
+**Decision**: Make the Gold `daily_snapshot` transform resilient to a missing prior day, and
+make the Bronze backfill's 429 handling distinguish a transient per-minute limit from an
+exhausted daily/monthly quota.
+
+**Why**:
+- **Gold gap-tolerance**: `build_daily_snapshot` computes day-over-day price change via a
+  `LAG` over the prior day. It previously dropped every row when the prior day was absent
+  (`WHERE prev_price_usd IS NOT NULL`), so an isolated snapshot date produced **zero rows**
+  and tripped the count validator (`ValueError`) — failing the whole Gold run. Under the
+  build-forward strategy (D024) sparse dates are normal, so this hard requirement is wrong.
+  We now keep the day's rows and leave `prev_price_usd` / `price_change_pct` null when the
+  prior day is missing. Normal days are unaffected (prev is non-null for every coin).
+- **Bronze 429 split**: CoinCap returns HTTP 429 for both the transient per-minute burst
+  limit (clears on its own) and a hard daily/monthly quota (does not). The retry loop
+  previously retried *both* up to 5× with 60s backoffs. Against an exhausted quota that is
+  pure waste and — because rejected requests can still count against the quota — actively
+  burned credits faster. We now only retry when the body indicates the per-minute limit and
+  fail fast otherwise.
+
+**Consequences**:
+- Rebuilding Gold for a backfilled date range is currently a manual, idempotent operation
+  (per-date, `overwritePartitions` only touches that date's partition). Automating it as a
+  range-aware Gold DAG is planned as a separate change.
+- Per-call pacing (`COINCAP_MAX_CALLS_PER_MINUTE`, default 5) and retry limits are
+  env-configurable for higher tiers.
+
+**Alternatives considered**:
+- **Backfill the missing prior day instead of tolerating the gap**: Rejected as the default —
+  it spends scarce credits (D024) to satisfy a transform constraint that shouldn't exist.
+- **Drop the Gold count validator**: Rejected — zero rows for a date that genuinely has
+  Silver data is still a real error worth catching.
+

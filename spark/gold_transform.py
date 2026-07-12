@@ -166,7 +166,9 @@ def build_daily_snapshot(
             / F.col("prev_price_usd")
             * F.lit(100.0),
         )
-        .where(F.col("prev_price_usd").isNotNull())
+        # Keep the day's rows even when the prior day is missing (coverage gap):
+        # prev_price_usd / price_change_pct stay null rather than dropping the row,
+        # so an isolated snapshot date still produces a Gold table instead of failing.
         .where(F.col("snapshot_date") == F.lit(logical_date))
         .withColumn("coin_rank", F.rank().over(coin_rank_window).cast("int"))
         .withColumn("price_change_rank", F.rank().over(ranked_window))
