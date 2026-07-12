@@ -1,0 +1,46 @@
+name: Daily CoinCap capture
+
+# Laptop-independent daily capture: fetch the CoinCap /assets snapshot and write
+# a raw Parquet file to the S3-compatible capture bucket (R2 or S3). The local
+# pipeline ingests these snapshots later, so date coverage no longer depends on
+# the local stack being up. See docs/autonomous-daily-capture.md.
+
+on:
+  schedule:
+    # 00:30 UTC daily — after the day has settled. Cron is always UTC.
+    - cron: "30 0 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Optional capture date (YYYY-MM-DD, UTC). Blank = today."
+        required: false
+        default: ""
+
+concurrency:
+  group: daily-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install capture dependencies
+        run: pip install requests "pydantic>=2" pyarrow boto3
+
+      - name: Capture daily snapshot
+        env:
+          COINCAP_API_KEY: ${{ secrets.COINCAP_API_KEY }}
+          CAPTURE_S3_ENDPOINT_URL: ${{ secrets.CAPTURE_S3_ENDPOINT_URL }}
+          CAPTURE_S3_ACCESS_KEY_ID: ${{ secrets.CAPTURE_S3_ACCESS_KEY_ID }}
+          CAPTURE_S3_SECRET_ACCESS_KEY: ${{ secrets.CAPTURE_S3_SECRET_ACCESS_KEY }}
+          CAPTURE_S3_BUCKET: ${{ secrets.CAPTURE_S3_BUCKET }}
+          CAPTURE_S3_REGION: auto
+        run: |
+          python scripts/capture_daily_snapshot.py ${{ github.event.inputs.date && format('--date {0}', github.event.inputs.date) || '' }}
