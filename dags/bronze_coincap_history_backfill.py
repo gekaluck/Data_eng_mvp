@@ -8,6 +8,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from datetime import date
 
 import pyarrow as pa
@@ -53,6 +54,23 @@ BRONZE_BUCKET = "bronze"
 S3_CONN_ID = "minio_s3"
 PLAN_PREFIX = "PLAN_JSON:"
 
+# CoinCap's free tier ("tier 0") allows only 5 calls/minute. This backfill fans out
+# to ~2 calls per coin, so requests must be paced to stay under that ceiling and be
+# resilient to the occasional 429. Both are configurable via env for higher tiers.
+COINCAP_MAX_CALLS_PER_MINUTE = int(os.getenv("COINCAP_MAX_CALLS_PER_MINUTE", "5"))
+COINCAP_RATE_LIMIT_MAX_RETRIES = int(os.getenv("COINCAP_RATE_LIMIT_MAX_RETRIES", "5"))
+_MIN_CALL_INTERVAL_S = 60.0 / max(COINCAP_MAX_CALLS_PER_MINUTE, 1)
+_last_call_monotonic = 0.0
+
+
+def _throttle() -> None:
+    """Space calls apart so we stay under the CoinCap per-minute limit."""
+    global _last_call_monotonic
+    wait = _MIN_CALL_INTERVAL_S - (time.monotonic() - _last_call_monotonic)
+    if wait > 0:
+        time.sleep(wait)
+    _last_call_monotonic = time.monotonic()
+
 
 def _build_headers() -> dict[str, str]:
     if COINCAP_API_KEY:
@@ -78,13 +96,57 @@ def _build_endpoint(path_template: str, coin_id: str | None = None) -> str:
     return f"{COINCAP_API_BASE_URL}{path}"
 
 
+def _is_per_minute_limit(response) -> bool:
+    """True only for the transient per-minute 429, not a daily/monthly quota 429.
+
+    CoinCap returns HTTP 429 for both the short per-minute burst limit (which clears
+    on its own) and a hard daily/monthly quota (which does not). We only want to
+    retry the former; the body distinguishes them (e.g. "per minute limit exceeded").
+    """
+    if response is None:
+        return False
+    body = (response.text or "").lower()
+    return "per minute" in body or "minute limit" in body
+
+
 def _fetch_json(url: str, headers: dict[str, str], params: dict[str, int | str]):
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=30)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as exc:
-        raise RuntimeError(format_coincap_request_error(exc, url)) from exc
+    for attempt in range(COINCAP_RATE_LIMIT_MAX_RETRIES + 1):
+        _throttle()
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as exc:
+            is_rate_limited = exc.response is not None and exc.response.status_code == 429
+            # A per-minute 429 clears on its own; a daily/monthly quota 429 does not.
+            # Retrying the latter only wastes time and can burn more quota, so we
+            # only retry when the body clearly indicates the per-minute limit.
+            transient = is_rate_limited and _is_per_minute_limit(exc.response)
+            if transient and attempt < COINCAP_RATE_LIMIT_MAX_RETRIES:
+                retry_after = exc.response.headers.get("Retry-After", "")
+                sleep_s = float(retry_after) if retry_after.isdigit() else 60.0
+                logger.warning(
+                    "CoinCap per-minute 429 on %s; backing off %.0fs (attempt %d/%d)",
+                    url,
+                    sleep_s,
+                    attempt + 1,
+                    COINCAP_RATE_LIMIT_MAX_RETRIES,
+                )
+                time.sleep(sleep_s)
+                continue
+            if is_rate_limited and not transient:
+                logger.error(
+                    "CoinCap 429 on %s is not a per-minute limit (likely daily/monthly "
+                    "quota exhausted); not retrying to avoid burning more quota.",
+                    url,
+                )
+            raise RuntimeError(format_coincap_request_error(exc, url)) from exc
+        except requests.exceptions.RequestException as exc:
+            raise RuntimeError(format_coincap_request_error(exc, url)) from exc
+
+    raise RuntimeError(
+        f"CoinCap rate limit did not clear after {COINCAP_RATE_LIMIT_MAX_RETRIES} retries (URL: {url})."
+    )
 
 
 def _write_records_to_bronze(
