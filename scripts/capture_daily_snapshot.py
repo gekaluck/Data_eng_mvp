@@ -45,6 +45,16 @@ COINCAP_URL = f"{COINCAP_API_BASE_URL}{COINCAP_ASSETS_PATH}"
 COINCAP_API_KEY = os.getenv("COINCAP_API_KEY", "").strip()
 COINCAP_LIMIT = int(os.getenv("COINCAP_LIMIT", "20"))
 
+# Env vars that must be present for the upload to succeed. We check these (and
+# boto3) BEFORE fetching, so a misconfigured run fails fast instead of wasting a
+# CoinCap call/credit on data it can't store.
+REQUIRED_UPLOAD_ENVVARS = (
+    "CAPTURE_S3_ENDPOINT_URL",
+    "CAPTURE_S3_ACCESS_KEY_ID",
+    "CAPTURE_S3_SECRET_ACCESS_KEY",
+    "CAPTURE_S3_BUCKET",
+)
+
 
 def _resolve_capture_date(date_arg: str | None) -> date:
     """The snapshot's partition date: an explicit override, else today (UTC)."""
@@ -84,6 +94,27 @@ def _fetch_snapshot_parquet() -> bytes:
     return buffer.getvalue()
 
 
+def _check_upload_prerequisites() -> None:
+    """Fail fast (before spending a CoinCap call) if the upload can't succeed.
+
+    Verifies the bucket env vars are set and boto3 is importable, so a
+    misconfigured run never wastes an API request on data it cannot store.
+    """
+    missing = [name for name in REQUIRED_UPLOAD_ENVVARS if not os.getenv(name)]
+    if missing:
+        raise RuntimeError(
+            "Cannot upload: missing env var(s): "
+            + ", ".join(missing)
+            + ". Set them (as GitHub Actions secrets) before running."
+        )
+    try:
+        import boto3  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "Cannot upload: boto3 is not installed (pip install boto3)."
+        ) from exc
+
+
 def _upload_to_bucket(parquet_bytes: bytes, key: str) -> None:
     """Write the snapshot to the S3-compatible capture bucket (R2 or S3)."""
     import boto3  # imported here so --dry-run needs no AWS deps
@@ -110,6 +141,10 @@ def main() -> int:
     capture_date = _resolve_capture_date(args.date)
     key = bronze_assets_key(capture_date)
     logger.info("Capture date %s -> key %s", capture_date.isoformat(), key)
+
+    # Validate we can store the result before spending a CoinCap call on it.
+    if not args.dry_run:
+        _check_upload_prerequisites()
 
     parquet_bytes = _fetch_snapshot_parquet()
 
