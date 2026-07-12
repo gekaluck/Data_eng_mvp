@@ -154,7 +154,9 @@ def build_daily_snapshot(
     )
 
     price_window = Window.partitionBy("coin_id").orderBy("snapshot_date")
-    ranked_window = Window.orderBy(F.desc("price_change_pct"))
+    # nulls_last so coins with an unknown (null) price change never crowd out real
+    # ranks; they are excluded from price_change_rank entirely below.
+    ranked_window = Window.orderBy(F.desc_nulls_last("price_change_pct"))
     coin_rank_window = Window.orderBy(F.desc("market_cap_usd"))
 
     ranked_df = (
@@ -171,7 +173,15 @@ def build_daily_snapshot(
         # so an isolated snapshot date still produces a Gold table instead of failing.
         .where(F.col("snapshot_date") == F.lit(logical_date))
         .withColumn("coin_rank", F.rank().over(coin_rank_window).cast("int"))
-        .withColumn("price_change_rank", F.rank().over(ranked_window))
+        # Only rank coins whose price change is known; a null change (missing prior
+        # day) leaves price_change_rank null rather than getting an arbitrary rank.
+        .withColumn(
+            "price_change_rank",
+            F.when(
+                F.col("price_change_pct").isNotNull(),
+                F.rank().over(ranked_window),
+            ),
+        )
     )
 
     coins_df = spark.table(f"{silver_catalog_name}.crypto.coins").select(
