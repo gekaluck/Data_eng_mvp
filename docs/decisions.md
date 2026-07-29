@@ -609,3 +609,52 @@ exhausted daily/monthly quota.
 - **Drop the Gold count validator**: Rejected — zero rows for a date that genuinely has
   Silver data is still a real error worth catching.
 
+---
+
+## D026 — Daily Capture Runs in the Cloud and Lands in S3 (implements D024)
+**Date**: 2026-07-28
+**Status**: accepted
+
+**Decision**: Split **capture** from **processing**. The single daily CoinCap `/assets`
+call runs in GitHub Actions on a cron and writes a raw Parquet snapshot to an **AWS S3**
+bucket (`us-east-1`). All heavy transforms (Silver/Gold/dbt) stay local and on-demand.
+The capture script reuses the local pipeline's Pydantic contract, Parquet shape, and
+object-key layout, so its output is byte-compatible with what the Bronze DAG writes.
+
+**Why**:
+- D024 commits us to building history forward from the daily snapshot, which only works
+  if the snapshot actually happens every day. Tying that to the laptop being on produced
+  a ~3-month hole in Silver — the exact failure the strategy can't absorb.
+- Capture and processing have opposite requirements: capture must be **reliable and is
+  cheap** (one API call, KBs of output); processing is **heavy but can be batched and
+  late**. Only the reliable-and-cheap half needs to leave the laptop.
+- GitHub Actions is already present, free at this cadence, and needs no new
+  infrastructure to babysit. S3 was chosen over Cloudflare R2 because there's an existing
+  AWS account — no new service or vendor relationship (agent rule 5) — and because the
+  local→cloud story in `architecture.md` already maps MinIO onto S3.
+
+**Consequences**:
+- Bronze now has **two writers**: the local DAG and the cloud capture. They agree by
+  construction (shared `schemas.coincap` / `bronze_assets_key`), and both are idempotent
+  per date, so a doubly-captured day overwrites rather than duplicates.
+- Credentials become a real concern: the workflow's IAM user is write-only into
+  `crypto/assets/*`, so a leaked key can't read or delete history.
+- Phase 2 (local sync) is now required for the captured data to be *usable* — until it
+  lands, snapshots accumulate in S3 but never reach Silver/Gold.
+- Capture reliability now depends on GitHub keeping the schedule enabled; it disables
+  cron workflows after 60 days of repo inactivity.
+
+**Alternatives considered**:
+- **Commit snapshots to a git data branch**: Rejected — data-in-git bloats the repo,
+  has no lifecycle policy, and throws away the partition/scan properties the whole
+  lakehouse design is about.
+- **Cloudflare R2**: Genuinely attractive (free tier, zero egress for the Phase 2 pull),
+  but at KB/day the egress saving is theoretical and it means one more account. Reversible
+  — swapping back is an endpoint + region change.
+- **Run the whole pipeline in the cloud**: Rejected — this is a local-first learning
+  project. Moving Spark/Trino/Airflow off the laptop changes what the project *is* and
+  costs real money.
+
+**Revisit if**: Capture volume grows enough that egress matters (→ R2), or we want the
+snapshot to land somewhere the local stack can read without a sync step.
+

@@ -14,11 +14,25 @@ The system follows a **lakehouse-style** architecture with three layers:
 
 ## Data Flow
 
+Capture is deliberately split from processing: the daily API call runs in the cloud so
+coverage doesn't depend on the laptop being on (D026), while every transform stays local.
+
 ```text
 [CoinCap API]
       |
-      v
-  Airflow orchestrator / manual DAG runs
+      +---------------------------+
+      |                           |
+      v                           v
+  Airflow orchestrator      GitHub Actions daily cron
+  / manual DAG runs         (scripts/capture_daily_snapshot.py)
+      |                           |
+      |                           v
+      |                     S3 capture bucket (raw Parquet, same key layout)
+      |                           |
+      |                           v
+      |                     local sync  (Phase 2, planned)
+      |                           |
+      +---------------------------+
       |
       v
   Bronze (Parquet in MinIO, date-partitioned)
@@ -73,6 +87,14 @@ The system follows a **lakehouse-style** architecture with three layers:
 - S3-compatible object storage, runs as a Docker container
 - Acts as the lakehouse backing store for all layers
 - One bucket per layer: `s3a://bronze/...`, `s3a://silver/...`, `s3a://gold/...`
+
+### Cloud Capture - GitHub Actions + AWS S3
+- One scheduled job per day fetches the CoinCap `/assets` snapshot and writes raw
+  Parquet to an S3 bucket, independent of the local stack (D026)
+- Reuses the Bronze Pydantic contract and object-key layout, so captured objects are
+  byte-compatible with what the local Bronze DAG writes
+- The only cloud dependency in the project; everything downstream stays local
+- See `docs/autonomous-daily-capture.md`
 
 ### Table Format - Apache Iceberg
 - Iceberg 1.5.x on top of Spark
@@ -174,4 +196,5 @@ If this later moves to AWS, the rough mapping is:
 | PySpark (local) | EMR Serverless      |
 | Airflow (local) | MWAA or self-hosted |
 
-This is context only. Nothing in the project requires cloud access.
+This is context only. The one piece already in the cloud is the daily capture (D026);
+nothing else in the project requires cloud access.
