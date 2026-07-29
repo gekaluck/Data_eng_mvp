@@ -1,4 +1,10 @@
-{{ config(alias='weekly_roll_avg') }}
+{{ config(
+    alias='weekly_roll_avg',
+    materialized='incremental',
+    incremental_strategy='merge',
+    unique_key=['snapshot_date', 'coin_id'],
+    partitioning=['snapshot_date']
+) }}
 
 {% set snapshot_date = var('snapshot_date', none) %}
 

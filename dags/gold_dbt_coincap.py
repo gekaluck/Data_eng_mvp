@@ -14,7 +14,13 @@ logger = logging.getLogger(__name__)
 
 REQUIRED_ENVVARS = ["DBT_TRINO_HOST", "DBT_TRINO_PORT", "DBT_TRINO_USER"]
 DBT_PROJECT_DIR = "/opt/airflow/dbt"
-DBT_SELECT_MODELS = ["daily_snapshot", "mc_rank_change", "wkly_roll_avg"]
+DBT_SELECT_MODELS = [
+    "daily_snapshot",
+    "mc_rank_change",
+    "wkly_roll_avg",
+    "latest_market_snapshot",
+    "data_availability_daily",
+]
 
 
 def validate_envvars(envvars: dict[str, str]) -> None:

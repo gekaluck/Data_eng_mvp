@@ -46,28 +46,39 @@ ranked_snapshot as (
         coin_id,
         snapshot_date,
         price_usd,
-        prev_price_usd,
+        case
+            when prev_snapshot_date = date_add('day', -1, snapshot_date)
+                then prev_price_usd
+        end as prev_price_usd,
         cast(
             rank() over (
                 partition by snapshot_date
                 order by market_cap_usd desc
             ) as integer
         ) as coin_rank,
-        ((price_usd - prev_price_usd) / nullif(prev_price_usd, 0)) * 100.0 as price_change_pct,
-        cast(
-            rank() over (
-                partition by snapshot_date
-                order by ((price_usd - prev_price_usd) / nullif(prev_price_usd, 0)) * 100.0 desc
-            ) as integer
-        ) as price_change_rank,
+        case
+            when prev_snapshot_date = date_add('day', -1, snapshot_date)
+                then ((price_usd - prev_price_usd) / nullif(prev_price_usd, 0)) * 100.0
+        end as price_change_pct,
+        case
+            when prev_snapshot_date = date_add('day', -1, snapshot_date)
+                and prev_price_usd is not null
+            then cast(
+                rank() over (
+                    partition by snapshot_date
+                    order by case
+                        when prev_snapshot_date = date_add('day', -1, snapshot_date)
+                            then ((price_usd - prev_price_usd) / nullif(prev_price_usd, 0)) * 100.0
+                    end desc nulls last
+                ) as integer
+            )
+        end as price_change_rank,
         market_cap_usd,
         volume_usd_24hr,
         vwap_24hr
     from snapshots_with_prev
-    where prev_price_usd is not null
-        and prev_snapshot_date = date_add('day', -1, snapshot_date)
     {% if snapshot_date %}
-        and snapshot_date = cast('{{ snapshot_date }}' as date)
+    where snapshot_date = cast('{{ snapshot_date }}' as date)
     {% endif %}
 ),
 

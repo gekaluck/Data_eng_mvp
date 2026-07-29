@@ -50,7 +50,10 @@ coverage doesn't depend on the laptop being on (D026), while every transform sta
   Gold (Iceberg tables in MinIO, JDBC catalog metadata in Postgres)
       |
       v
-  Trino + dbt + comparison/debugging
+  Trino SQL serving boundary
+      |
+      v
+  Superset dashboards + SQL Lab / Jupyter debugging
 ```
 
 ---
@@ -82,6 +85,13 @@ coverage doesn't depend on the laptop being on (D026), while every transform sta
 - Single-node Trino runs locally in Docker
 - Reads and writes Iceberg tables through the shared JDBC catalog
 - Serves as the SQL endpoint for dbt and ad hoc exploration
+- Applies a read-only Gold access policy to the Superset identity
+
+### Serving Layer - Apache Superset
+- Runs as an optional Docker Compose profile for end-user exploration
+- Reads canonical dbt Gold relations through Trino; it does not copy lake data
+- Provisions the connection, datasets, charts, and dashboard idempotently from code
+- Includes a daily availability view that exposes available, partial, and missing dates
 
 ### Storage - MinIO
 - S3-compatible object storage, runs as a Docker container
@@ -178,6 +188,7 @@ The gold layer optimizes for the reader, not the writer.
 | Orchestration  | Apache Airflow 2.x  | Docker         |
 | Compute        | PySpark 3.5.x       | Local / Docker |
 | Query engine   | Trino 477           | Docker         |
+| BI / serving   | Superset 6.0        | Docker         |
 | Storage        | MinIO               | Docker         |
 | Table format   | Iceberg 1.5.x       | Spark plugin   |
 | Catalog        | JDBC                | Postgres       |

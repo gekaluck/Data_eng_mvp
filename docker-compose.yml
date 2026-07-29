@@ -259,7 +259,15 @@ services:
       - ./config/trino/config.properties:/etc/trino/config.properties:ro
       - ./config/trino/node.properties:/etc/trino/node.properties:ro
       - ./config/trino/jvm.config:/etc/trino/jvm.config:ro
+      - ./config/trino/access-control.properties:/etc/trino/access-control.properties:ro
+      - ./config/trino/access-rules.json:/etc/trino/access-rules.json:ro
       - ./config/trino/catalog:/etc/trino/catalog:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/v1/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     depends_on:
       postgres:
         condition: service_healthy
@@ -267,6 +275,81 @@ services:
         condition: service_healthy
       iceberg-catalog-init:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Superset - optional serving/BI profile over the curated dbt Gold schema
+  # Start with: docker compose --profile serving up -d superset
+  # -------------------------------------------------------------------------
+  superset-db:
+    image: postgres:16
+    profiles: ["serving"]
+    environment:
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: superset
+    volumes:
+      - superset-metadata-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "superset", "-d", "superset"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  superset-init:
+    build:
+      context: ./superset
+    image: data-eng-mvp-superset:6.0.0
+    profiles: ["serving"]
+    environment:
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-}
+      SUPERSET_DB_HOST: superset-db
+      SUPERSET_DB_PORT: 5432
+      SUPERSET_DB_USER: superset
+      SUPERSET_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      SUPERSET_DB_NAME: superset
+      SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME:-admin}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-}
+      SUPERSET_ADMIN_FIRSTNAME: ${SUPERSET_ADMIN_FIRSTNAME:-Superset}
+      SUPERSET_ADMIN_LASTNAME: ${SUPERSET_ADMIN_LASTNAME:-Admin}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-superset-admin@example.com}
+    volumes:
+      - ./superset:/app/project-superset:ro
+    command: ["bash", "/app/project-superset/bootstrap.sh"]
+    depends_on:
+      superset-db:
+        condition: service_healthy
+    restart: "no"
+
+  superset:
+    build:
+      context: ./superset
+    image: data-eng-mvp-superset:6.0.0
+    profiles: ["serving"]
+    environment:
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-}
+      SUPERSET_DB_HOST: superset-db
+      SUPERSET_DB_PORT: 5432
+      SUPERSET_DB_USER: superset
+      SUPERSET_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      SUPERSET_DB_NAME: superset
+    ports:
+      - "8088:8088"
+    command: ["/app/docker/entrypoints/run-server.sh"]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8088/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+      trino:
+        condition: service_healthy
     restart: unless-stopped
 
 # ---------------------------------------------------------------------------
@@ -277,5 +360,6 @@ volumes:
   minio-data:
   airflow-logs:
   spark-ivy-cache:    # Caches Iceberg/S3A JARs so they survive container restarts
+  superset-metadata-data:
 
 

@@ -657,4 +657,41 @@ object-key layout, so its output is byte-compatible with what the Bronze DAG wri
 
 **Revisit if**: Capture volume grows enough that egress matters (→ R2), or we want the
 snapshot to land somewhere the local stack can read without a sync step.
+---
+
+## D027 - Superset serves canonical dbt Gold through read-only Trino
+
+**Date**: 2026-07-18
+**Status**: Accepted
+
+**Decision**:
+- Add Apache Superset as an optional local `serving` Compose profile.
+- Connect it only to physical relations in `gold.crypto_dbt` through Trino.
+- Manage the database, datasets, charts, and dashboard in an idempotent Python bootstrap
+  with stable UUIDs.
+- Add `latest_market_snapshot` as a dashboard-friendly current-state relation and
+  `data_availability_daily` as a complete calendar of available, partial, and missing days.
+- Make the rank-change and weekly-average relations incremental so historical dates remain
+  queryable, and apply the missing-prior-day tolerance from D025 consistently.
+- Restrict the Trino `superset` identity to `SELECT` on the dbt Gold schema.
+
+**Why**:
+- Trino remains the single query boundary over Iceberg, and dbt remains the canonical
+  place for business logic.
+- A complete date spine makes absent data visible instead of silently omitting dates.
+- Code-managed assets make the local dashboard reproducible without relying on an
+  unversioned Superset metadata volume.
+
+**Security boundary**:
+- The file-based Trino policy is a local blast-radius guardrail. Because the MVP still uses
+  unauthenticated HTTP, it is not an adversarial identity boundary; TLS and authentication
+  are required before exposing the services beyond localhost.
+
+**Alternatives considered**:
+- **Streamlit**: flexible, but would require building navigation, filtering, SQL exploration,
+  and dashboard state that Superset already provides.
+- **Metabase**: simpler onboarding, but less aligned with the SQL-first, code-provisioned
+  learning goals for this repository.
+- **Superset virtual datasets containing all business SQL**: rejected because it would move
+  transformation logic out of dbt and make testing and reuse weaker.
 

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("up", "down", "restart", "status", "logs")]
+    [ValidateSet("up", "down", "restart", "status", "logs", "superset")]
     [string]$Command = "up",
 
     [switch]$Rebuild,
@@ -55,6 +55,82 @@ function Test-AirflowImageExists {
     return ($LASTEXITCODE -eq 0)
 }
 
+function Assert-SupersetEnvReady {
+    param([string]$EnvPath)
+
+    $required = @(
+        "SUPERSET_SECRET_KEY",
+        "SUPERSET_ADMIN_PASSWORD"
+    )
+    $lines = Get-Content $EnvPath
+    $missing = @()
+
+    foreach ($name in $required) {
+        $processValue = [Environment]::GetEnvironmentVariable($name)
+        $envLine = $lines | Where-Object { $_ -match "^$([regex]::Escape($name))=" } | Select-Object -First 1
+        $fileValue = if ($envLine) { ($envLine -split "=", 2)[1].Trim() } else { "" }
+        $value = if ($processValue) { $processValue } else { $fileValue }
+
+        if (-not $value -or $value.Contains("REPLACE_WITH_")) {
+            $missing += $name
+        }
+    }
+
+    if ($missing.Count -gt 0) {
+        throw "Superset configuration is missing or still placeholder-valued: $($missing -join ', '). Update .env and rerun."
+    }
+}
+
+function Initialize-SupersetSecret {
+    param([string]$EnvPath)
+
+    $processValue = [Environment]::GetEnvironmentVariable("SUPERSET_SECRET_KEY")
+    if ($processValue -and -not $processValue.Contains("REPLACE_WITH_")) {
+        return
+    }
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.AddRange([string[]](Get-Content -LiteralPath $EnvPath))
+    $secretIndex = -1
+    $fileValue = ""
+
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match '^SUPERSET_SECRET_KEY=') {
+            $secretIndex = $index
+            $fileValue = ($lines[$index] -split "=", 2)[1].Trim()
+            break
+        }
+    }
+
+    if ($fileValue -and -not $fileValue.Contains("REPLACE_WITH_")) {
+        return
+    }
+
+    $bytes = New-Object byte[] 64
+    $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $generator.GetBytes($bytes)
+    } finally {
+        $generator.Dispose()
+    }
+    $secret = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    $secretLine = "SUPERSET_SECRET_KEY=$secret"
+
+    if ($secretIndex -ge 0) {
+        $lines[$secretIndex] = $secretLine
+    } else {
+        if ($lines.Count -gt 0 -and $lines[$lines.Count - 1] -ne "") {
+            $lines.Add("")
+        }
+        $lines.Add($secretLine)
+    }
+
+    $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines((Resolve-Path $EnvPath), $lines, $utf8WithoutBom)
+    [Environment]::SetEnvironmentVariable("SUPERSET_SECRET_KEY", $secret, "Process")
+    Write-Host "Generated SUPERSET_SECRET_KEY and saved it to .env."
+}
+
 function Show-ServiceUrls {
     Write-Host ""
     Write-Host "Local services:"
@@ -62,6 +138,7 @@ function Show-ServiceUrls {
     Write-Host "  MinIO:       http://localhost:9001"
     Write-Host "  Trino:       http://localhost:8081"
     Write-Host "  JupyterLab:  http://localhost:8888"
+    Write-Host "  Superset:    http://localhost:8088 (when the serving profile is running)"
     Write-Host ""
     Write-Host "Useful commands:"
     Write-Host "  .\scripts\stack.ps1 status"
@@ -96,6 +173,18 @@ function Start-Stack {
     if ($FollowLogs) {
         Invoke-Docker compose logs -f
     }
+}
+
+function Start-Superset {
+    Assert-EnvFileReady -EnvPath ".env"
+    Initialize-SupersetSecret -EnvPath ".env"
+    Assert-SupersetEnvReady -EnvPath ".env"
+
+    Write-Host "Building and starting the Superset serving profile..."
+    Invoke-Docker compose --profile serving up -d --build superset
+    Invoke-Docker compose --profile serving ps
+    Write-Host ""
+    Write-Host "Superset: http://localhost:8088"
 }
 
 function Stop-Stack {
@@ -140,6 +229,7 @@ try {
         "restart" { Restart-Stack }
         "status" { Show-Status }
         "logs" { Show-Logs }
+        "superset" { Start-Superset }
     }
 }
 finally {

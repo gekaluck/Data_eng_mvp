@@ -5,7 +5,7 @@
 # Run `make help` to see all available targets.
 # =============================================================================
 
-.PHONY: build up down restart ps logs logs-scheduler trino logs-trino lab logs-lab test test-schemas test-dag clean help
+.PHONY: build up down restart ps logs logs-scheduler trino logs-trino lab logs-lab superset superset-init logs-superset test test-schemas test-dag clean help
 
 ## Build the custom Airflow image (required once after Dockerfile changes, M3+)
 build:
@@ -51,6 +51,18 @@ logs-lab:
 lab:
 	docker compose up -d jupyter-lab
 
+## Build, initialize, and open the optional Superset serving profile
+superset:
+	docker compose --profile serving up -d --build superset
+
+## Re-run the idempotent Superset metadata and dashboard bootstrap
+superset-init:
+	docker compose --profile serving run --rm superset-init
+
+## Tail Superset web and initialization logs
+logs-superset:
+	docker compose --profile serving logs -f superset superset-init
+
 ## Run all tests inside the scheduler container
 test:
 	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/ -v
@@ -81,6 +93,9 @@ help:
 	@echo   logs-trino      - Tail Trino logs
 	@echo   logs-lab        - Tail JupyterLab logs
 	@echo   lab             - Start the JupyterLab browser service
+	@echo   superset        - Build and start the Superset serving profile
+	@echo   superset-init   - Re-run the idempotent Superset asset bootstrap
+	@echo   logs-superset   - Tail Superset web and initialization logs
 	@echo   test            - Run all tests inside Docker
 	@echo   test-schemas    - Run schema tests only
 	@echo   test-dag        - Run DAG integrity tests only
