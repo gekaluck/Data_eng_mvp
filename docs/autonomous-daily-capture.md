@@ -77,14 +77,63 @@ local sync.
 
 ## Phases
 
-- **Phase 1 — Capture (this change):** capture script + scheduled workflow writing to
+- **Phase 1 — Capture (done, D026):** capture script + scheduled workflow writing to
   the bucket. *Outcome: snapshots accumulate daily, laptop-independent — no new gaps.*
-- **Phase 2 — Local sync + catch-up (next):** a `make sync` / small DAG task that copies
-  captured date-partitions from the bucket into MinIO `bronze/`, then runs Silver/Gold
-  over the caught-up range (reuses the existing per-date DAGs and the range-aware Gold
-  rebuild). *Outcome: bring the local warehouse current in one step.*
-- **Phase 3 — Cleanup (optional):** make the cloud capture the single source of daily
-  capture; keep the local fetch DAG for manual one-offs only.
+- **Phase 2 — Local sync + catch-up (done, D027):** `bronze_capture_sync` copies captured
+  date-partitions from the bucket into MinIO `bronze/`; the orchestrator runs the same
+  logic inline and feeds the caught-up range to Silver and both Gold paths.
+  *Outcome: the local warehouse comes current in one ordinary run.*
+- **Phase 3 — Cleanup (done, folded into Phase 2):** the cloud capture is now the only
+  scheduled CoinCap call. `bronze_coincap_assets` stays for manual one-offs but is no
+  longer chained into the daily flow — keeping both would have meant two writers on the
+  same Bronze key and two API credits per day.
+
+## Running the sync
+
+The orchestrator does this automatically on its daily run. To pull manually:
+
+- **`bronze_capture_sync`** — copies every captured date Bronze is missing. Optional
+  `start_date`/`end_date` narrow the window; `overwrite=true` re-copies dates that
+  already exist locally (the repair path for a bad Bronze partition).
+- **`coincap_regular_orchestrator`** — same sync, then Silver and Gold over exactly the
+  dates it pulled. Skips itself when there's nothing new rather than rewriting identical
+  partitions.
+
+To replay one day end to end: trigger the orchestrator with
+`start_date=end_date=YYYY-MM-DD` and `overwrite=true`.
+
+## Local read credentials
+
+The sync needs its **own** IAM key — `s3:GetObject` **and** `s3:ListBucket` on the
+capture bucket. Don't reuse the workflow's writer key: it's deliberately write-only, and
+listing is what the sync does first.
+
+`s3:ListBucket` is a *bucket*-level action, so unlike `PutObject` its resource is the
+bucket ARN with no trailing `/*`. Getting these two confused is the usual cause of an
+`AccessDenied` that looks inexplicable:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::<bucket>"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::<bucket>/crypto/assets/*"
+    }
+  ]
+}
+```
+
+Put the key in `.env` as `CAPTURE_S3_ACCESS_KEY_ID` / `CAPTURE_S3_SECRET_ACCESS_KEY`
+plus `CAPTURE_S3_BUCKET`; docker-compose builds the Airflow `capture_s3` connection from
+them. That connection uses the JSON form rather than a connection URI, because AWS secret
+keys routinely contain `/` and `+`, which corrupt a URI unless percent-encoded.
 
 ## Acceptance criteria
 
@@ -92,3 +141,18 @@ local sync.
   secrets committed.
 - A laptop-off day no longer creates a Silver gap after a local sync + run.
 - Existing Silver/Gold DAGs consume captured data with no schema changes.
+
+## Gotcha: `--date` relabels, it does not time-travel
+
+`/assets` is a **live** endpoint — it returns the market as of now and takes no date
+parameter. The capture's `--date` flag (and the workflow's date input) only chooses the
+**object key**. Passing an old date therefore files *today's* prices under that date.
+
+Use it for relabeling around the UTC midnight boundary or re-running a failed job, never
+to fill a historical gap. Real history needs `/assets/{id}/history`, which is what
+`bronze_coincap_history_backfill` uses — a different endpoint, per-coin, thinner payload,
+and expensive in credits (D024).
+
+Bronze stores no fetch timestamp, so a mislabeled partition is indistinguishable from a
+real one after the fact. If you produce one while testing, delete the object before the
+sync carries it into Bronze.

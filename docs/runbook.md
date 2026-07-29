@@ -9,11 +9,16 @@ This runbook documents the normal operating paths for the local CoinCap lakehous
 Regular flow:
 
 - `coincap_regular_orchestrator`
-- `bronze_coincap_assets`
+- `bronze_capture_sync`
 - `silver_coincap_assets`
 - `gold_coincap_assets`
 - `gold_dbt_coincap_assets`
 - `gold_dbt_coincap_tests`
+
+Manual only (not in the daily chain):
+
+- `bronze_coincap_assets` — one-off local CoinCap fetch. The scheduled daily call lives
+  in GitHub Actions now (D027); running this spends a CoinCap credit.
 
 Backfill flow:
 
@@ -26,14 +31,26 @@ Use `coincap_regular_orchestrator`.
 
 For scheduled runs:
 
-- Airflow drives the whole chain
-- Bronze, Silver, Spark Gold, dbt Gold, and dbt tests run in the expected order
+- The orchestrator syncs whatever the cloud capture has landed since last time, then
+  runs Silver, Spark Gold, dbt Gold, and dbt tests over exactly those dates
+- A run that finds nothing new **skips** rather than reprocessing identical partitions
+- After the laptop has been off, the first run is the catch-up — no special procedure
 
-For a manual one-day rerun:
+For a manual one-day rerun of the whole chain:
 
 1. Trigger `coincap_regular_orchestrator`
-2. Set `target_date` to `YYYY-MM-DD`
+2. Set `start_date` and `end_date` to the same `YYYY-MM-DD`, and `overwrite=true`
+   (without `overwrite` the sync finds nothing to do and the run skips)
 3. Monitor each downstream DAG run from the orchestrator graph and logs
+
+The orchestrator takes `start_date`/`end_date`, not `target_date` — it processes the
+window the sync discovered rather than a single assumed day.
+
+### Sync only
+
+Trigger `bronze_capture_sync` to pull captured days into Bronze without running any
+transforms. Optional `start_date`/`end_date` narrow the window; `overwrite=true`
+re-copies dates already present locally.
 
 ## Manual One-Day Replay
 
@@ -142,6 +159,26 @@ select * from spark_old;
 ```
 
 ## First Checks By Symptom
+
+### The orchestrator keeps skipping
+
+The sync found nothing new, which means no fresh snapshot reached the bucket. Check, in
+order:
+
+- the GitHub Actions "Daily CoinCap capture" workflow — is it still enabled? GitHub
+  disables scheduled workflows after 60 days of repo inactivity
+- its recent runs for failures (an expired CoinCap key, or IAM changes)
+- whether the object for the expected UTC date actually exists in the capture bucket
+
+A skip is the correct response to "nothing new", so the fault is upstream in the cloud
+capture, not in the local stack.
+
+### The sync task fails with AccessDenied
+
+The local `capture_s3` connection needs a **read** key with both `s3:GetObject` (on
+`<bucket>/crypto/assets/*`) and `s3:ListBucket` (on `<bucket>`, no `/*`). The capture
+workflow's key is write-only by design and will fail here. Confirm `.env` has the reader
+credentials, not the writer's.
 
 ### Bronze succeeded but Silver is waiting
 

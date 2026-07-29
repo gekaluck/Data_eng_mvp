@@ -211,22 +211,31 @@ class TestDagIntegrity:
         assert "coincap_regular_orchestrator" in dagbag.dags
 
     def test_orchestrator_dag_tasks(self, dagbag):
-        """The orchestrator should chain Bronze and Silver, then run Gold branches with dbt tests."""
+        """The orchestrator syncs captured snapshots, then runs Silver and both Gold branches."""
         dag = dagbag.dags["coincap_regular_orchestrator"]
         task_ids = {t.task_id for t in dag.tasks}
         assert task_ids == {
-            "trigger_bronze_assets",
+            "sync_captured_snapshots",
             "trigger_silver_assets",
             "trigger_gold_assets",
             "trigger_gold_dbt_assets",
             "trigger_gold_dbt_tests",
         }
 
-    def test_orchestrator_dag_task_order(self, dagbag):
-        """The orchestrator should run Bronze, then Silver, then Gold with dbt tests after dbt build."""
+    def test_orchestrator_does_not_fetch_from_coincap(self, dagbag):
+        """The daily CoinCap call belongs to the cloud capture now (D027).
+
+        Chaining the local Bronze fetch here again would put two writers on the same
+        Bronze key and spend two API credits for one day of data.
+        """
         dag = dagbag.dags["coincap_regular_orchestrator"]
-        bronze_task = dag.get_task("trigger_bronze_assets")
-        assert "trigger_silver_assets" in {t.task_id for t in bronze_task.downstream_list}
+        assert "trigger_bronze_assets" not in {t.task_id for t in dag.tasks}
+
+    def test_orchestrator_dag_task_order(self, dagbag):
+        """Sync first, then Silver, then Gold, with dbt tests after the dbt build."""
+        dag = dagbag.dags["coincap_regular_orchestrator"]
+        sync_task = dag.get_task("sync_captured_snapshots")
+        assert "trigger_silver_assets" in {t.task_id for t in sync_task.downstream_list}
         silver_task = dag.get_task("trigger_silver_assets")
         downstream_ids = {t.task_id for t in silver_task.downstream_list}
         assert "trigger_gold_assets" in downstream_ids
@@ -235,3 +244,23 @@ class TestDagIntegrity:
         assert "trigger_gold_dbt_tests" in {
             t.task_id for t in dbt_gold_task.downstream_list
         }
+
+    def test_capture_sync_dag_exists(self, dagbag):
+        """The standalone sync DAG should be present for manual catch-up runs."""
+        assert "bronze_capture_sync" in dagbag.dags
+
+    def test_range_capable_dags_accept_start_and_end_date(self, dagbag):
+        """Every DAG in the catch-up path must accept the range the sync discovers.
+
+        If one of these silently ignored start_date/end_date it would process only a
+        single day of a multi-day catch-up, leaving the layers out of step.
+        """
+        for dag_id in (
+            "silver_coincap_assets",
+            "gold_coincap_assets",
+            "gold_dbt_coincap_assets",
+            "gold_dbt_coincap_tests",
+        ):
+            params = dagbag.dags[dag_id].params
+            assert "start_date" in params, f"{dag_id} is missing the start_date param"
+            assert "end_date" in params, f"{dag_id} is missing the end_date param"

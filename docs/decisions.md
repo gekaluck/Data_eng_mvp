@@ -658,3 +658,70 @@ object-key layout, so its output is byte-compatible with what the Bronze DAG wri
 **Revisit if**: Capture volume grows enough that egress matters (→ R2), or we want the
 snapshot to land somewhere the local stack can read without a sync step.
 
+
+---
+
+## D027 — Cloud Capture Becomes the Only Daily Fetch; Local Airflow Syncs and Processes (completes D026)
+**Date**: 2026-07-28
+**Status**: accepted
+
+**Decision**: The regular orchestrator no longer calls CoinCap. It starts with a
+`sync_captured_snapshots` task that copies captured days from the S3 bucket into Bronze,
+then hands the **exact range it just synced** to Silver and both Gold implementations.
+`bronze_coincap_assets` remains in the repo as a manual one-off fetch, deliberately
+unchained from the daily flow.
+
+**How we got here** (the local → cloud shift, in four steps):
+
+| Step | Decision | Where the daily call lived | What forced the next step |
+|------|----------|---------------------------|---------------------------|
+| 1 | D001/D016 | Local Airflow, single-task Bronze DAG | Coverage only accrued when the laptop was on |
+| 2 | D024 | Same, but now the *primary* history mechanism | Free tier is credit-metered; deep backfill is unaffordable, so forward collection must not miss days |
+| 3 | D026 | Added a cloud capture writing to S3 | Two daily writers now existed — a race and a doubled credit spend |
+| 4 | **D027** | Cloud only; local Airflow consumes | — |
+
+The through-line: D024 made *never missing a day* the whole strategy, and a laptop
+cannot deliver that. Each step after it moves the one part that must be reliable further
+from the laptop, while keeping everything expensive and exploratory local.
+
+**Why**:
+- **One writer per key.** After D026 both the local DAG and the cloud job wrote
+  `crypto/assets/year=.../assets.parquet` daily. Last-writer-wins on identical data is
+  harmless right up until it isn't, and nothing recorded which one produced a file
+  (Bronze stores no fetch timestamp).
+- **Credits.** Two calls a day for one day's data is 60 of 500 monthly credits spent on
+  duplication (D024).
+- **The sync discovers its own range.** The orchestrator reads `start_date`/`end_date`
+  off the sync task's XCom rather than assuming "today", so a laptop that was off for a
+  week processes exactly the seven days that arrived — the catch-up is a normal run, not
+  a special procedure.
+- **Skip when there's nothing new.** An empty sync raises `AirflowSkipException` instead
+  of running Spark to rewrite identical partitions.
+
+**Consequences**:
+- Silver, dbt Gold, and dbt Gold tests gained `start_date`/`end_date` to match Spark
+  Gold (which got it earlier). All four had to move together: if one ignored the range
+  it would process a single day of a multi-day catch-up and leave the layers out of
+  step. `test_range_capable_dags_accept_start_and_end_date` guards this.
+- The local stack now needs read credentials for the capture bucket — a second Airflow
+  connection (`capture_s3`) and a **separate read-only IAM key**, not the writer's.
+- The daily flow depends on GitHub Actions being healthy. A silently disabled schedule
+  now stops the pipeline, not just one snapshot — worth checking when Bronze stops
+  advancing.
+- Bronze's own idempotency is unchanged: the sync only copies dates Bronze lacks, so
+  re-running it is free.
+
+**Alternatives considered**:
+- **Keep both writers for a comparison period**: Rejected. The comparison it would buy
+  is weak (both run the same validation on the same endpoint), and the cost is a daily
+  race plus doubled credits.
+- **Dynamic task mapping over dates in the orchestrator** instead of range params on each
+  DAG: Genuinely appealing — per-date tasks visible in the grid, parallel execution, and
+  a good Airflow learning target. Rejected for now because Spark Gold already had range
+  params, so mapping would have meant two different multi-date idioms in one pipeline.
+  Worth revisiting as a deliberate exercise.
+- **Have the sync DAG trigger Silver/Gold itself**: Rejected — inverts the orchestrator
+  pattern and scatters the pipeline's shape across two files.
+
+**Revisit if**: We want per-date parallelism (→ dynamic task mapping), or the catch-up
+window regularly grows large enough that sequential per-date Spark runs get slow.

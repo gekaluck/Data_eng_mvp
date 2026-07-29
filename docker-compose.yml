@@ -50,6 +50,13 @@ x-airflow-common: &airflow-common
     # Format: aws://<access_key>:<secret_key>@?host=http://minio:9000&extra__aws__endpoint_url=http://minio:9000
     AIRFLOW_CONN_MINIO_S3: aws://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@?endpoint_url=http%3A%2F%2Fminio%3A9000
 
+    # Cloud capture bucket connection, read-only, for bronze_capture_sync (D027).
+    # JSON form rather than the URI form used above: AWS secret keys routinely
+    # contain "/" and "+", which silently corrupt a connection URI unless every
+    # value is percent-encoded. JSON sidesteps the encoding problem entirely.
+    AIRFLOW_CONN_CAPTURE_S3: '{"conn_type": "aws", "login": "${CAPTURE_S3_ACCESS_KEY_ID:-}", "password": "${CAPTURE_S3_SECRET_ACCESS_KEY:-}", "extra": {"region_name": "${CAPTURE_S3_REGION:-us-east-1}"}}'
+    CAPTURE_S3_BUCKET: ${CAPTURE_S3_BUCKET:-}
+
   volumes:
     - ./dags:/opt/airflow/dags
     - airflow-logs:/opt/airflow/logs
