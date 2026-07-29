@@ -729,3 +729,59 @@ from the laptop, while keeping everything expensive and exploratory local.
 
 **Revisit if**: We want per-date parallelism (→ dynamic task mapping), or the catch-up
 window regularly grows large enough that sequential per-date Spark runs get slow.
+
+---
+
+## D028 — Bronze Is Mutable in Practice; Silver May Hold Better Data Than Bronze
+**Date**: 2026-07-29
+**Status**: accepted
+
+**Decision**: Treat the Bronze `crypto/assets/` objects for 2026-07-22..2026-07-28 as
+**less trustworthy than Silver**, and do not rebuild Silver from Bronze for that window.
+Record that `architecture.md`'s claim that Bronze is an "immutable landing zone and source
+of truth for reprocessing" was not true of the local fetch DAG.
+
+**What we found**: For 07-22..07-28, Bronze and Silver disagree. Bronze holds one
+identical Bitcoin price (63799.552250) on 07-22, 07-23, 07-24, 07-25 **and** 07-27, and a
+second identical value (63708.900000) on 07-26 and 07-28. Silver holds distinct, plausible
+per-day values for the same dates. No history backfill covers this window (anchors are
+03-15, 04-01, 07-09), so Silver was not repaired from the history endpoint — it simply
+still holds what Bronze contained *at the time Silver ran*, and Bronze was overwritten
+afterwards.
+
+**Why it happened**: two properties of the old local fetch DAG combined.
+1. It fetched **live** `/assets` but named the object from the run's `logical_date`.
+2. It uploaded with `load_bytes(..., replace=True)`.
+
+So any late or repeated run for a past logical date overwrote that date's Bronze object
+with whatever the market looked like *at run time*. When the machine came back after being
+off, several catch-up runs fired within seconds of each other — `scheduled__2026-07-22`
+and `scheduled__2026-07-23` both started at 2026-07-24T02:08, two seconds apart — and each
+stored the same response under a different date. Manual triggers and cleared runs do the
+same thing; the resulting data is indistinguishable.
+
+**Consequences**:
+- **Reprocessing is not safe for that window.** Re-running Silver from Bronze for
+  07-22..07-28 would replace good values with the duplicated snapshot and reintroduce
+  false zero-change days. Any future "rebuild everything from Bronze" needs to exclude it.
+- Bronze is only trustworthy for dates whose object was written by a run that executed on
+  the day it was labelling. We have no way to verify that per-object after the fact —
+  Bronze stores no fetch timestamp (see the gap noted in D026's consequences).
+- One duplicate pair did reach Silver and Gold: 07-22 and 07-23 share 65060.9, producing a
+  0.00% change for all 20 coins on 07-23. `daily_snapshot_no_duplicate_fetch_dates` now
+  fails on exactly this.
+
+**Why the new design closes it**: the cloud capture resolves its date from the wall clock
+at fetch time, never from a logical date, so it can only ever write *today's* object with
+today's data — a late or retried run is still correct. The sync copies only dates Bronze
+lacks, and `overwrite` is opt-in. Neither can stamp an old date with new prices.
+
+**Alternatives considered**:
+- **Rebuild Silver from Bronze for consistency**: Rejected — it would consistently make the
+  data worse. Silver is the better record here.
+- **Backfill 07-22..07-28 from `/assets/{id}/history` to settle it authoritatively**:
+  ~700 credits against a 500/month cap (D024). Not worth it; Silver's values are already
+  plausible and distinct.
+
+**Revisit if**: We add a fetch timestamp to Bronze (which would make this diagnosable
+rather than inferred), or we need a provable-provenance rebuild.

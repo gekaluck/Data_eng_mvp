@@ -169,7 +169,11 @@ The gold layer optimizes for the reader, not the writer.
 - **Storage**: MinIO (`s3://bronze/crypto/assets/year=YYYY/month=MM/day=DD/assets.parquet`)
 - **Schema enforcement**: Pydantic validation at ingestion time
 - **Modeling**: none; bronze preserves source shape exactly
-- **Purpose**: immutable landing zone and source of truth for reprocessing
+- **Purpose**: landing zone and source for reprocessing
+- **Caveat**: not actually immutable. The local fetch DAG uploads with `replace=True` and
+  names objects from `logical_date`, so a late run overwrote a past date with live prices.
+  Objects for 2026-07-22..07-28 are affected and Silver holds better values — see D028
+  before reprocessing that window. The cloud capture cannot do this (D027).
 
 ### Silver
 - **Format**: Iceberg tables (Parquet underneath)
