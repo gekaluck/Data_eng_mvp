@@ -710,6 +710,10 @@ from the laptop, while keeping everything expensive and exploratory local.
   advancing.
 - Bronze's own idempotency is unchanged: the sync only copies dates Bronze lacks, so
   re-running it is free.
+- The orchestrator moved off `@daily` to `30 1 * * *`. The two schedules are now coupled:
+  the capture writes at 00:30 UTC, so a midnight orchestrator run would consistently
+  process the *previous* day and add a ~24h lag for no reason. If the capture cron ever
+  moves, this must move with it.
 
 **Alternatives considered**:
 - **Keep both writers for a comparison period**: Rejected. The comparison it would buy

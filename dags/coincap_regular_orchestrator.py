@@ -34,7 +34,11 @@ TRIGGER_CONF = {
 @dag(
     dag_id="coincap_regular_orchestrator",
     description="Sync cloud-captured snapshots, then run Silver and Gold over the caught-up range",
-    schedule="@daily",
+    # 01:30 UTC — an hour after the cloud capture's 00:30 UTC cron, so the day's
+    # snapshot is already in the bucket when we sync. `@daily` (00:00 UTC) would run
+    # *before* the capture and always process the previous day, adding a needless
+    # ~24h lag. The hour of headroom absorbs GitHub's scheduled-run drift.
+    schedule="30 1 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
     params={
