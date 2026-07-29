@@ -8,6 +8,7 @@ local ways to explore them:
 - **JupyterLab + Spark** for notebook-style inspection using the same Spark runtime
   as the DAG transforms
 - **Trino** for SQL-first querying, dbt development, and BI-friendly access
+- **Superset** for reusable, user-facing Gold dashboards and filtered exploration
 
 Both use the same JDBC-backed Iceberg catalog metadata in Postgres and the same
 object storage in MinIO.
@@ -19,6 +20,7 @@ object storage in MinIO.
 - `spark/lakehouse_browser.py` helper module
 - `notebooks/lakehouse_browser.ipynb` starter notebook
 - `dbt/` project initialized for Trino
+- optional `serving` Compose profile with a reproducible Superset dashboard
 
 The runtime exposes:
 
@@ -68,6 +70,7 @@ The runtime exposes:
    SELECT * FROM silver.crypto.coins LIMIT 20;
    SELECT * FROM gold.crypto.daily_snapshot LIMIT 20;
    SELECT * FROM gold.crypto_dbt.daily_snapshot LIMIT 20;
+   SELECT * FROM gold.crypto_dbt.data_availability_daily ORDER BY snapshot_date DESC;
    ```
 
 ## dbt workflow
@@ -87,7 +90,7 @@ The runtime exposes:
 3. Build Gold models for a single logical date:
 
    ```bash
-   dbt run --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg --vars '{"snapshot_date": "2026-04-01"}'
+   dbt run --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg latest_market_snapshot data_availability_daily --vars '{"snapshot_date": "2026-04-01"}'
    ```
 
 4. Generate and serve docs:
@@ -96,6 +99,19 @@ The runtime exposes:
    dbt docs generate --project-dir dbt --profiles-dir dbt
    dbt docs serve --project-dir dbt --profiles-dir dbt --port 8082
    ```
+
+## Superset workflow
+
+After adding the Superset values from `.env.example` to `.env`:
+
+```powershell
+.\scripts\stack.ps1 superset
+```
+
+Open `http://localhost:8088` and choose **Crypto Lakehouse — Gold Analytics**.
+The dashboard is bootstrapped from repository code and queries only
+`gold.crypto_dbt`. Full setup and availability semantics are in
+[`superset.md`](superset.md).
 
 ## Airflow integration
 

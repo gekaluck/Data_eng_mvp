@@ -1,0 +1,59 @@
+{
+  "catalogs": [
+    {
+      "user": "superset",
+      "catalog": "gold",
+      "allow": "read-only"
+    },
+    {
+      "user": "superset",
+      "catalog": ".*",
+      "allow": "none"
+    },
+    {
+      "catalog": ".*",
+      "allow": "all"
+    }
+  ],
+  "schemas": [
+    {
+      "user": "superset",
+      "owner": false
+    },
+    {
+      "owner": true
+    }
+  ],
+  "tables": [
+    {
+      "user": "superset",
+      "catalog": "gold",
+      "schema": "crypto_dbt",
+      "table": ".*",
+      "privileges": ["SELECT"]
+    },
+    {
+      "user": "superset",
+      "privileges": []
+    },
+    {
+      "privileges": [
+        "SELECT",
+        "INSERT",
+        "DELETE",
+        "UPDATE",
+        "OWNERSHIP",
+        "GRANT_SELECT"
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "user": "superset",
+      "allow": ["execute"]
+    },
+    {
+      "allow": ["execute", "view", "kill"]
+    }
+  ]
+}

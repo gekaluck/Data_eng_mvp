@@ -22,11 +22,15 @@ to the `trino` service on port `8080`.
 4. Run the Gold models for one logical date:
 
    ```bash
-   dbt run --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg --vars '{"snapshot_date": "2026-04-01"}'
+   dbt run --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg latest_market_snapshot data_availability_daily --vars '{"snapshot_date": "2026-04-01"}'
    ```
 
 The default target writes models to the `gold.crypto_dbt` schema in Trino. Silver
 tables are declared as sources under the `silver` catalog.
+
+`latest_market_snapshot` is a small serving model for dashboard overview charts.
+`data_availability_daily` generates a complete date spine and classifies each date
+as `available`, `partial`, or `missing`; see `docs/superset.md`.
 
 ## dbt docs
 

@@ -66,3 +66,64 @@ models:
         description: Coin price in USD on the snapshot date.
         tests:
           - not_null
+
+  - name: data_availability_daily
+    description: >-
+      Calendar-complete serving-layer coverage table. One row is emitted for every
+      date from the first Silver snapshot through the configured end date, including
+      dates on which no data exists.
+    tests:
+      - unique:
+          column_name: snapshot_date
+    columns:
+      - name: snapshot_date
+        description: Calendar date whose local analytical availability is evaluated.
+        tests:
+          - not_null
+      - name: expected_asset_count
+        description: Minimum expected CoinCap asset count, configured with a dbt variable.
+        tests:
+          - not_null
+      - name: silver_row_count
+        description: Number of Silver price snapshot rows available for the date.
+        tests:
+          - not_null
+      - name: daily_snapshot_row_count
+        description: Number of dbt daily snapshot rows available for the date.
+        tests:
+          - not_null
+      - name: rank_change_row_count
+        description: Number of dbt market-cap rank-change rows available for the date.
+        tests:
+          - not_null
+      - name: weekly_average_row_count
+        description: Number of dbt weekly-average rows available for the date.
+        tests:
+          - not_null
+      - name: availability_status
+        description: "Overall serving status: available, partial, or missing."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['available', 'partial', 'missing']
+      - name: availability_reason
+        description: First deterministic reason explaining a partial or missing date.
+
+  - name: latest_market_snapshot
+    description: Latest available dbt daily snapshot, materialized for dashboard charts that must not embed subqueries in filters.
+    tests:
+      - unique:
+          column_name: coin_id
+    columns:
+      - name: snapshot_date
+        description: Latest available snapshot date.
+        tests:
+          - not_null
+      - name: coin_id
+        description: Stable CoinCap coin identifier.
+        tests:
+          - not_null
+      - name: price_usd
+        description: Latest price in USD.
+        tests:
+          - not_null

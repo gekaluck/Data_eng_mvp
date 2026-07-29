@@ -41,6 +41,7 @@ flowchart TB
     end
 
     TRINO["Trino<br/>SQL query engine"]
+    SUPERSET["Superset<br/>dashboards & exploration"]
 
     API -->|ingest| BRONZE
     ROOT -.orchestrates.-> SPARK
@@ -51,6 +52,7 @@ flowchart TB
     SPARK --- CATALOG
     DBT --- TRINO
     TRINO --- CATALOG
+    TRINO --> SUPERSET
     SILVER -.metadata.- CATALOG
     GOLD -.metadata.- CATALOG
 ```
@@ -84,6 +86,8 @@ identical inputs (see the comparison queries in [`docs/runbook.md`](docs/runbook
 - **Postgres** — Airflow metadata database and the Iceberg JDBC catalog.
 - **Trino** — SQL engine that reads/writes Iceberg; the endpoint for dbt and ad-hoc queries.
 - **dbt** — the SQL Gold path plus data tests, run against Trino inside the regular flow.
+- **Apache Superset** — optional user-facing dashboards and SQL exploration over the
+  curated dbt Gold schema.
 
 Concrete versions live in [`docker-compose.yml`](docker-compose.yml),
 [`requirements.txt`](requirements.txt), and [`docs/architecture.md`](docs/architecture.md).
@@ -121,6 +125,14 @@ PowerShell; a `Makefile` mirrors the same commands elsewhere.
    | MinIO console   | http://localhost:9001   |
    | Trino           | http://localhost:8081   |
    | JupyterLab      | http://localhost:8888   |
+   | Superset        | http://localhost:8088   |
+
+   Superset uses the optional `serving` profile and is started separately after its
+   environment variables are configured:
+
+   ```powershell
+   .\scripts\stack.ps1 superset
+   ```
 
 4. **Stop the stack** (volumes preserved; add `-Volumes` to also delete local data):
 
@@ -161,8 +173,8 @@ Full operating procedures, single-layer replay steps, and validation queries are
 
 ```powershell
 dbt debug --project-dir dbt --profiles-dir dbt
-dbt run   --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg --vars '{"snapshot_date": "2026-04-02"}'
-dbt test  --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg --vars '{"snapshot_date": "2026-04-02"}'
+dbt run   --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg latest_market_snapshot data_availability_daily --vars '{"snapshot_date": "2026-04-02"}'
+dbt test  --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg latest_market_snapshot data_availability_daily --vars '{"snapshot_date": "2026-04-02"}'
 ```
 
 Inside Airflow the same build and tests run as the two downstream dbt DAGs. See
@@ -180,6 +192,7 @@ Inside Airflow the same build and tests run as the two downstream dbt DAGs. See
 | [`config/`](config)     | Trino catalog/service configuration                             |
 | [`tests/`](tests)       | DAG-integrity, schema, and transform unit tests (pytest)        |
 | [`notebooks/`](notebooks)| JupyterLab exploration of the lakehouse                        |
+| [`superset/`](superset)   | Reproducible Superset image, configuration, and dashboard assets |
 | [`scripts/`](scripts)   | PowerShell helpers for running the stack                        |
 | [`docs/`](docs)         | Architecture, decisions, runbook, milestones                    |
 
@@ -191,6 +204,7 @@ Inside Airflow the same build and tests run as the two downstream dbt DAGs. See
 - [decisions.md](docs/decisions.md) — technical decision log
 - [runbook.md](docs/runbook.md) — operating procedures and debugging by symptom
 - [table_browser.md](docs/table_browser.md) — exploring tables via Trino / Jupyter / dbt
+- [superset.md](docs/superset.md) — serving-layer setup, dashboard assets, and availability semantics
 - [milestones.md](docs/milestones.md) — how the project was built up, milestone by milestone
 - [new_ARCHITECTURE.md](docs/new_ARCHITECTURE.md) — design for the upcoming AI-agent layer
 - [dbt/README.md](dbt/README.md) — dbt-specific setup and usage
