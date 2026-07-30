@@ -822,3 +822,47 @@ lacks, and `overwrite` is opt-in. Neither can stamp an old date with new prices.
 
 **Revisit if**: We add a fetch timestamp to Bronze (which would make this diagnosable
 rather than inferred), or we need a provable-provenance rebuild.
+
+---
+
+## D029 — Silence Is a Failure Mode: Assert Coverage, Time Out Waits, Fail on a Quiet Upstream
+**Date**: 2026-07-30
+**Status**: accepted
+
+**Decision**: Treat "nothing happened" as a condition the pipeline must actively rule out,
+not a state it may rest in. Concretely, four rules:
+
+1. **No unbounded wait.** Every `TriggerDagRunOperator` with `wait_for_completion=True`
+   carries an `execution_timeout`, and the orchestrator refuses to trigger a DAG that is
+   paused or unknown to Airflow.
+2. **Coverage is asserted, not assumed.** dbt tests fail when a Silver date is missing from
+   either Gold implementation, when the two Gold implementations disagree on row counts per
+   date, or when a null day-over-day change coexists with a Silver row for the previous day.
+3. **A quiet upstream must be distinguishable from a dead one.** The sync fails when the
+   newest captured date is older than `CAPTURE_MAX_AGE_DAYS` (default 2), and says whether
+   the bucket is empty or merely stale.
+4. **Metered operations do not retry.** The credit-spending backfill task runs with
+   `retries: 0`, and a coin CoinCap has no history for is skipped rather than fatal.
+
+**Why**: Every incident that cost real time in this project was quiet rather than loud. I9
+hid an 8-day Gold outage behind two green layers and 30 queued runs. I12 left a permanent
+null that no test looked for. I13's missing Silver date survived a full Gold rebuild. I1's
+three-month hole accrued because a skip and a death look identical from inside the sync.
+None of these were logic bugs — every individual component did what it was told. What was
+missing was any statement of what *should* be true across components.
+
+**Consequences**:
+- The dbt test DAG now depends on the Spark Gold branch as well as the dbt one, because the
+  cross-implementation test reads both. Left parallel, it would fail on dates Spark simply
+  had not built yet — a test that races its own subject.
+- Whole-history assertions get slower as coverage grows. At ~107 dates this is under a
+  second; if it ever matters, they can take the date range the run is processing.
+- `CAPTURE_MAX_AGE_DAYS=0` disables the freshness check, the escape hatch for deliberately
+  re-syncing an old date long after the fact.
+
+**Alternatives considered**:
+- **Alert instead of fail**: Rejected. There is no alerting channel in a local-first stack,
+  and a warning in a log nobody reads is what these incidents already looked like.
+- **Assert coverage in Python rather than dbt tests**: Rejected — the assertions are about
+  data, the house style for data assertions is a singular dbt test that returns offending
+  rows, and returning the rows makes a failure self-diagnosing.

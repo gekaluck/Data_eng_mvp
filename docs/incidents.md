@@ -36,7 +36,9 @@ Status key: `fixed` | `mitigated` | `open` | `accepted`
 | I13 | 2026-07-10 | Silver missing a date Bronze had | fixed by rebuild |
 | I14 | 2026-07-29 | Orchestrator ran 30 min *before* the capture, adding 24h lag | fixed |
 | I15 | 2026-07-29 | dbt Gold was single-date while Spark Gold took ranges | fixed |
-| I16 | 2026-07-29 | dbt and Spark Gold disagree at gap boundaries | open |
+| I16 | 2026-07-29 | dbt and Spark Gold disagree at gap boundaries | fixed (stored data rebuilt) |
+| I17 | 2026-07-19 | A second duplicated-fetch pair, outside the I10 window | mitigated |
+| I18 | 2026-07-30 | One coin without history aborts the whole backfill, mid-spend | fixed |
 
 ---
 
@@ -192,8 +194,11 @@ dates with no Silver data at all.
 **Fix**: Cleared the stale queued runs, unpaused both DAGs, and rebuilt Gold over the
 affected range in one pass using the range support from PR #15.
 
-**Still open**: nothing prevents a recurrence. A paused downstream DAG remains an untimed,
-unalerted, indefinite hang. This is hardening item **H1**.
+**Hardened (H1)**: the orchestrator now checks every downstream DAG's paused flag before
+triggering anything and fails naming the offender, and all four trigger tasks carry an
+`execution_timeout` so no wait can be indefinite. `test_every_trigger_task_has_an_execution_timeout`
+fails if a future trigger task is added without one. Verified against the real metadata DB
+by pausing `gold_coincap_assets` and watching the guard fire.
 
 **Lesson**: The worst failures aren't loud. Two layers stayed green and produced fresh data
 for 8 days while the layer everyone actually looks at was frozen.
@@ -262,7 +267,11 @@ when the missing day later arrives — the null is permanent until someone rebui
 
 **Fix**: Rebuilt Gold across 07-10 → 07-29.
 
-**Still open**: Gold's correctness depends on build order and nothing detects a stale null.
+**Hardened (H2)**: `daily_snapshot_no_stale_null_change` now fails when any Gold row has a
+null `price_change_pct` while Silver *does* hold that coin's previous day — the exact
+signature of a date built before its predecessor landed. Gold's correctness still depends
+on build order; what changed is that getting it wrong is now loud the same day instead of
+permanent and invisible.
 
 ---
 
@@ -279,7 +288,11 @@ was null in turn because its prior day was missing.
 range. No API calls needed — the data was already local.
 
 **Lesson**: Layer coverage drifts independently. Nothing asserted that Silver covers Bronze,
-or that Gold covers Silver — hardening item **H2**.
+or that Gold covers Silver.
+
+**Hardened (H2)**: `gold_covers_every_silver_date` fails when any Silver date is missing
+from either Gold implementation, so a date that never got built is caught by a test rather
+than by someone noticing a break in a chart.
 
 ---
 
@@ -328,7 +341,69 @@ the change. The dbt model still has `where prev_price_usd is not null and prev_s
 = date_add('day', -1, snapshot_date)`, so it drops them. The implementations therefore
 diverge on the first day after every gap.
 
-**Fix**: Not yet applied — hardening item **H4**.
+**Fix**: The *model* was already brought in line by `be800bc` (the Superset PR), which
+replaced the `where` with `case when` guards — so by the time H4 was picked up, only the
+**stored data** still diverged: those dates had been built by the older model and nothing
+rebuilds a Gold date when the model changes. Rebuilt 04-07, 07-10 and 07-22 in both
+engines; `gold_implementations_agree_per_date` now asserts they stay in step.
+
+**Lesson**: A model fix and the data it produced are two different things. Changing a
+transform silently leaves every previously-built partition on the old logic, and the
+incident stays open in the data long after it is closed in the code.
+
+---
+
+## I17 — A second duplicated-fetch pair, outside the documented window
+**Date**: 2026-07-19 · **Status**: mitigated
+
+**Symptom**: The Superset "Daily Price Change" chart showed a second all-zero day besides
+the known 07-23 — every coin at exactly 0.00% on **07-19**.
+
+**Root cause**: The same defect as I10, but earlier and outside the 07-22 → 07-28 window
+D028 documents. The Bronze objects for 07-18 and 07-19 are identical *and carry the same
+S3 LastModified*, `2026-07-20T20:24:23Z` — one live `/assets` response written under two
+date labels by catch-up runs. `change_percent_24hr` is identical too (1.2134…), which no
+two real days share. Silver was built from those objects, so Gold produced an exact 0.00%
+change for all 20 coins.
+
+**Fix**: Repaired 07-19 from `/assets/{id}/history` — a single-date backfill
+(`anchor_snapshot_date=2026-07-20, backfill_days=1`), which merges over the duplicated row
+in place. Backfilled days are lower fidelity by construction: `change_percent_24hr` and
+`vwap_24hr` are null because the history endpoints do not return them (D024).
+
+**Note**: Both members of a duplicated pair are suspect, not just the second. The fetch
+happened on 07-20, so 07-18's row is *also* really a 07-20 observation. Only the duplicate
+is detectable, so only the duplicate was repaired.
+
+**Lesson**: D028 scoped the damage to the window we happened to look at. The detectable
+signature — two adjacent dates sharing a price to the last decimal — was never run across
+the whole history, so a second instance sat four days outside the boundary. When you find
+a data defect, search for its signature everywhere before writing down its extent.
+
+---
+
+## I18 — One coin without history aborts the whole backfill, mid-spend
+**Date**: 2026-07-30 · **Status**: fixed
+
+**Symptom**: The single-date backfill for 07-19 ran for six minutes, then died on
+`404 ... Asset history not found` for `gamecredits`. Nothing was written, and the credits
+spent on the ~15 coins fetched before it were gone. Airflow then scheduled a retry, which
+would have re-fetched all of them on the way to the same 404.
+
+**Root cause**: Two compounding defects. The coin universe comes from Silver's `coins`
+table — every coin ever seen — but CoinCap returns 404 forever for delisted or renamed
+assets, and the fetch loop treated any HTTP error as fatal. Worse, the task carried
+`retries: 2`, so a task that spends credits was set up to spend them again from the start.
+
+**Fix**: A 404 on a per-coin history endpoint now raises `CoinCapHistoryNotFound`, which
+the loop logs and skips, reporting the skipped coins at the end; other statuses stay fatal.
+Retries on the fetch task are now `0` — the per-minute 429 backoff inside `_fetch_json`
+already covers the one failure that clears on its own (I4), and anything else is a human's
+call, not something to pay for twice.
+
+**Lesson**: Retries and metered resources are a bad pair. The retry count was inherited
+from a DAG default written for free operations; nobody re-derived it for the one task in
+the repo where each attempt costs money.
 
 ---
 
@@ -336,10 +411,19 @@ diverge on the first day after every gap.
 
 Tracked here so they don't get lost; see the hardening plan for implementation detail.
 
-| ID | Item | Addresses |
-|----|------|-----------|
-| H1 | Fail fast on a hung/paused downstream trigger (`execution_timeout`, paused check) | I9 |
-| H2 | Assert layer coverage: Silver covers Bronze, Gold covers Silver | I9, I12, I13 |
-| H3 | Capture-freshness assertion in the sync, so a dead cloud capture is loud | I1 |
-| H4 | Reconcile dbt Gold with Spark Gold at gap boundaries | I16, I3 |
-| H5 | Record the fetch timestamp in Bronze so mislabeling is detectable | I6, I10 |
+| ID | Item | Addresses | Status |
+|----|------|-----------|--------|
+| H5 | Record the fetch timestamp in Bronze so mislabeling is detectable | I6, I10, I17 | open — own branch |
+
+### Landed
+
+| ID | Item | Addresses | How it fails now |
+|----|------|-----------|------------------|
+| H1 | Paused-DAG check + `execution_timeout` on every trigger task | I9 | The orchestrator task fails within seconds, naming the paused DAG |
+| H2 | Coverage and cross-implementation dbt tests | I9, I12, I13 | A missing date or a stale null fails the dbt test DAG the same day |
+| H3 | Capture-freshness assertion in the sync | I1 | A bucket that stopped receiving files fails instead of skipping |
+| H4 | dbt Gold reconciled with Spark Gold (data rebuilt) | I16, I3 | `gold_implementations_agree_per_date` fails on any divergence |
+
+H5 stays open deliberately: it changes the Bronze schema and touches Silver's reader, so
+it belongs on its own branch rather than growing this one. It is the item that would have
+made I10 and I17 *detectable* rather than inferred from a price coincidence.

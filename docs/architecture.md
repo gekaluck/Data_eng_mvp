@@ -58,6 +58,12 @@ lands (D027).
 Everything from Bronze down runs over the **range the sync discovered**, not a fixed
 "today", so a laptop that was off for a week catches up in one ordinary run.
 
+Before triggering anything, the orchestrator checks that every downstream DAG is
+registered and unpaused, and each trigger task carries an `execution_timeout`. Triggering
+a paused DAG otherwise produces a run stuck in `queued` that is waited on forever — the
+mechanism behind an 8-day silent Gold outage (I9, D029). The dbt test DAG runs after
+*both* Gold branches, since its tests compare them.
+
 `bronze_coincap_assets` (the original local fetch) still exists for manual one-off
 pulls but is no longer part of the daily chain — see D027 for how the daily call
 migrated from local Airflow to the cloud.
@@ -121,6 +127,9 @@ migrated from local Airflow to the cloud.
 - Publishes the caught-up date range, which drives Silver and both Gold paths
 - Planning logic is pure and unit-tested in `dags/utils/capture_sync.py`; the standalone
   DAG exists for manual "pull what's new" runs
+- Fails when the newest captured date is older than `CAPTURE_MAX_AGE_DAYS` (default 2), so
+  a dead cloud capture is distinguishable from a genuinely quiet day (D029). Set it to `0`
+  to re-sync an old date deliberately
 
 ### Table Format - Apache Iceberg
 - Iceberg 1.5.x on top of Spark
@@ -198,6 +207,10 @@ The gold layer optimizes for the reader, not the writer.
 - **Implementations**: Spark Gold and dbt Gold side by side
 - **Modeling**: analytical and dimensional
 - **Purpose**: analysis-ready datasets
+- **Gaps are tolerated, not hidden**: a date whose predecessor is missing keeps its rows
+  with null change columns (D025), and dbt tests assert that both implementations cover
+  every Silver date, agree on row counts per date, and never leave a null change where
+  Silver holds the previous day (D029)
 
 ---
 
