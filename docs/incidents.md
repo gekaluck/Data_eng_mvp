@@ -37,7 +37,7 @@ Status key: `fixed` | `mitigated` | `open` | `accepted`
 | I14 | 2026-07-29 | Orchestrator ran 30 min *before* the capture, adding 24h lag | fixed |
 | I15 | 2026-07-29 | dbt Gold was single-date while Spark Gold took ranges | fixed |
 | I16 | 2026-07-29 | dbt and Spark Gold disagree at gap boundaries | fixed (stored data rebuilt) |
-| I17 | 2026-07-19 | A second duplicated-fetch pair, outside the I10 window | mitigated |
+| I17 | 2026-07-19 | A second duplicated-fetch pair, outside the I10 window | fixed (repaired from history) |
 | I18 | 2026-07-30 | One coin without history aborts the whole backfill, mid-spend | fixed |
 
 ---
@@ -253,6 +253,10 @@ The test fails on 07-23 today.
 **Lesson**: Twenty assets never all close exactly flat. Impossible-in-nature patterns make
 excellent assertions.
 
+**Update (2026-07-30)**: Running the same signature across all history turned up a second
+instance on 07-19 (I17), outside the window D028 had recorded. 07-19 has been repaired from
+history; 07-23 still fails this test.
+
 ---
 
 ## I12 — Out-of-order Gold left a permanent null
@@ -368,8 +372,21 @@ change for all 20 coins.
 
 **Fix**: Repaired 07-19 from `/assets/{id}/history` — a single-date backfill
 (`anchor_snapshot_date=2026-07-20, backfill_days=1`), which merges over the duplicated row
-in place. Backfilled days are lower fidelity by construction: `change_percent_24hr` and
-`vwap_24hr` are null because the history endpoints do not return them (D024).
+in place — then rebuilt Gold for 07-19 **and 07-20**, whose change had been computed
+against the bad value. BTC on 07-19 went from 65280.55 (07-18's price, a 0.00% change for
+all 20 coins) to 64812.7375, a real −0.72% day.
+
+Two properties of a repaired day, both expected:
+- **Lower fidelity.** `change_percent_24hr` and `vwap_24hr` are null, because the history
+  endpoints do not return them (D024).
+- **A wider coin universe.** The backfill covers every coin in Silver's `coins` table, so
+  07-19 has 25 rows where its neighbours have 20. The five extra coins have no 07-18 row,
+  so their change is correctly null.
+
+**Still outstanding**: 07-23, the duplicate pair from I10 proper, is unrepaired and still
+shows a fabricated 0.00% market. The same single-date backfill fixes it
+(`anchor_snapshot_date=2026-07-24, backfill_days=1`) at the cost of another ~50 calls;
+it was left as a separate, deliberate spend.
 
 **Note**: Both members of a duplicated pair are suspect, not just the second. The fetch
 happened on 07-20, so 07-18's row is *also* really a 07-20 observation. Only the duplicate

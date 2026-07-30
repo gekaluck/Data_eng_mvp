@@ -820,6 +820,13 @@ lacks, and `overwrite` is opt-in. Neither can stamp an old date with new prices.
   ~700 credits against a 500/month cap (D024). Not worth it; Silver's values are already
   plausible and distinct.
 
+**Update (2026-07-30)**: the *duplicated* dates are a different case from the merely
+suspect ones, and are worth repairing individually. A single-date backfill costs ~50 calls
+and merges over the bad row in place (`WHEN MATCHED THEN UPDATE SET *`), so the choice is
+per-date rather than all-or-nothing. 07-19 was repaired this way (I17); 07-23 has not been.
+The rest of the 07-22..07-28 window stays as D028 describes — do not rebuild Silver from
+Bronze there.
+
 **Revisit if**: We add a fetch timestamp to Bronze (which would make this diagnosable
 rather than inferred), or we need a provable-provenance rebuild.
 
