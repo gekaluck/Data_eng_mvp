@@ -695,3 +695,130 @@ snapshot to land somewhere the local stack can read without a sync step.
 - **Superset virtual datasets containing all business SQL**: rejected because it would move
   transformation logic out of dbt and make testing and reuse weaker.
 
+
+---
+
+## D027 — Cloud Capture Becomes the Only Daily Fetch; Local Airflow Syncs and Processes (completes D026)
+**Date**: 2026-07-28
+**Status**: accepted
+
+**Decision**: The regular orchestrator no longer calls CoinCap. It starts with a
+`sync_captured_snapshots` task that copies captured days from the S3 bucket into Bronze,
+then hands the **exact range it just synced** to Silver and both Gold implementations.
+`bronze_coincap_assets` remains in the repo as a manual one-off fetch, deliberately
+unchained from the daily flow.
+
+**How we got here** (the local → cloud shift, in four steps):
+
+| Step | Decision | Where the daily call lived | What forced the next step |
+|------|----------|---------------------------|---------------------------|
+| 1 | D001/D016 | Local Airflow, single-task Bronze DAG | Coverage only accrued when the laptop was on |
+| 2 | D024 | Same, but now the *primary* history mechanism | Free tier is credit-metered; deep backfill is unaffordable, so forward collection must not miss days |
+| 3 | D026 | Added a cloud capture writing to S3 | Two daily writers now existed — a race and a doubled credit spend |
+| 4 | **D027** | Cloud only; local Airflow consumes | — |
+
+The through-line: D024 made *never missing a day* the whole strategy, and a laptop
+cannot deliver that. Each step after it moves the one part that must be reliable further
+from the laptop, while keeping everything expensive and exploratory local.
+
+**Why**:
+- **One writer per key.** After D026 both the local DAG and the cloud job wrote
+  `crypto/assets/year=.../assets.parquet` daily. Last-writer-wins on identical data is
+  harmless right up until it isn't, and nothing recorded which one produced a file
+  (Bronze stores no fetch timestamp).
+- **Credits.** Two calls a day for one day's data is 60 of 500 monthly credits spent on
+  duplication (D024).
+- **The sync discovers its own range.** The orchestrator reads `start_date`/`end_date`
+  off the sync task's XCom rather than assuming "today", so a laptop that was off for a
+  week processes exactly the seven days that arrived — the catch-up is a normal run, not
+  a special procedure.
+- **Skip when there's nothing new.** An empty sync raises `AirflowSkipException` instead
+  of running Spark to rewrite identical partitions.
+
+**Consequences**:
+- Silver, dbt Gold, and dbt Gold tests gained `start_date`/`end_date` to match Spark
+  Gold (which got it earlier). All four had to move together: if one ignored the range
+  it would process a single day of a multi-day catch-up and leave the layers out of
+  step. `test_range_capable_dags_accept_start_and_end_date` guards this.
+- The local stack now needs read credentials for the capture bucket — a second Airflow
+  connection (`capture_s3`) and a **separate read-only IAM key**, not the writer's.
+- The daily flow depends on GitHub Actions being healthy. A silently disabled schedule
+  now stops the pipeline, not just one snapshot — worth checking when Bronze stops
+  advancing.
+- Bronze's own idempotency is unchanged: the sync only copies dates Bronze lacks, so
+  re-running it is free.
+- The orchestrator moved off `@daily` to `30 1 * * *`. The two schedules are now coupled:
+  the capture writes at 00:30 UTC, so a midnight orchestrator run would consistently
+  process the *previous* day and add a ~24h lag for no reason. If the capture cron ever
+  moves, this must move with it.
+
+**Alternatives considered**:
+- **Keep both writers for a comparison period**: Rejected. The comparison it would buy
+  is weak (both run the same validation on the same endpoint), and the cost is a daily
+  race plus doubled credits.
+- **Dynamic task mapping over dates in the orchestrator** instead of range params on each
+  DAG: Genuinely appealing — per-date tasks visible in the grid, parallel execution, and
+  a good Airflow learning target. Rejected for now because Spark Gold already had range
+  params, so mapping would have meant two different multi-date idioms in one pipeline.
+  Worth revisiting as a deliberate exercise.
+- **Have the sync DAG trigger Silver/Gold itself**: Rejected — inverts the orchestrator
+  pattern and scatters the pipeline's shape across two files.
+
+**Revisit if**: We want per-date parallelism (→ dynamic task mapping), or the catch-up
+window regularly grows large enough that sequential per-date Spark runs get slow.
+
+---
+
+## D028 — Bronze Is Mutable in Practice; Silver May Hold Better Data Than Bronze
+**Date**: 2026-07-29
+**Status**: accepted
+
+**Decision**: Treat the Bronze `crypto/assets/` objects for 2026-07-22..2026-07-28 as
+**less trustworthy than Silver**, and do not rebuild Silver from Bronze for that window.
+Record that `architecture.md`'s claim that Bronze is an "immutable landing zone and source
+of truth for reprocessing" was not true of the local fetch DAG.
+
+**What we found**: For 07-22..07-28, Bronze and Silver disagree. Bronze holds one
+identical Bitcoin price (63799.552250) on 07-22, 07-23, 07-24, 07-25 **and** 07-27, and a
+second identical value (63708.900000) on 07-26 and 07-28. Silver holds distinct, plausible
+per-day values for the same dates. No history backfill covers this window (anchors are
+03-15, 04-01, 07-09), so Silver was not repaired from the history endpoint — it simply
+still holds what Bronze contained *at the time Silver ran*, and Bronze was overwritten
+afterwards.
+
+**Why it happened**: two properties of the old local fetch DAG combined.
+1. It fetched **live** `/assets` but named the object from the run's `logical_date`.
+2. It uploaded with `load_bytes(..., replace=True)`.
+
+So any late or repeated run for a past logical date overwrote that date's Bronze object
+with whatever the market looked like *at run time*. When the machine came back after being
+off, several catch-up runs fired within seconds of each other — `scheduled__2026-07-22`
+and `scheduled__2026-07-23` both started at 2026-07-24T02:08, two seconds apart — and each
+stored the same response under a different date. Manual triggers and cleared runs do the
+same thing; the resulting data is indistinguishable.
+
+**Consequences**:
+- **Reprocessing is not safe for that window.** Re-running Silver from Bronze for
+  07-22..07-28 would replace good values with the duplicated snapshot and reintroduce
+  false zero-change days. Any future "rebuild everything from Bronze" needs to exclude it.
+- Bronze is only trustworthy for dates whose object was written by a run that executed on
+  the day it was labelling. We have no way to verify that per-object after the fact —
+  Bronze stores no fetch timestamp (see the gap noted in D026's consequences).
+- One duplicate pair did reach Silver and Gold: 07-22 and 07-23 share 65060.9, producing a
+  0.00% change for all 20 coins on 07-23. `daily_snapshot_no_duplicate_fetch_dates` now
+  fails on exactly this.
+
+**Why the new design closes it**: the cloud capture resolves its date from the wall clock
+at fetch time, never from a logical date, so it can only ever write *today's* object with
+today's data — a late or retried run is still correct. The sync copies only dates Bronze
+lacks, and `overwrite` is opt-in. Neither can stamp an old date with new prices.
+
+**Alternatives considered**:
+- **Rebuild Silver from Bronze for consistency**: Rejected — it would consistently make the
+  data worse. Silver is the better record here.
+- **Backfill 07-22..07-28 from `/assets/{id}/history` to settle it authoritatively**:
+  ~700 credits against a 500/month cap (D024). Not worth it; Silver's values are already
+  plausible and distinct.
+
+**Revisit if**: We add a fetch timestamp to Bronze (which would make this diagnosable
+rather than inferred), or we need a provable-provenance rebuild.

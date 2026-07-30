@@ -16,23 +16,22 @@ The system follows a **lakehouse-style** architecture with three layers:
 
 Capture is deliberately split from processing: the daily API call runs in the cloud so
 coverage doesn't depend on the laptop being on (D026), while every transform stays local.
+The cloud capture is the **only** scheduled CoinCap call; local Airflow consumes what it
+lands (D027).
 
 ```text
 [CoinCap API]
       |
-      +---------------------------+
-      |                           |
-      v                           v
-  Airflow orchestrator      GitHub Actions daily cron
-  / manual DAG runs         (scripts/capture_daily_snapshot.py)
-      |                           |
-      |                           v
-      |                     S3 capture bucket (raw Parquet, same key layout)
-      |                           |
-      |                           v
-      |                     local sync  (Phase 2, planned)
-      |                           |
-      +---------------------------+
+      v
+  GitHub Actions daily cron
+  (scripts/capture_daily_snapshot.py)
+      |
+      v
+  S3 capture bucket (raw Parquet, Bronze's key layout)
+      |
+      v
+  Airflow orchestrator: sync_captured_snapshots
+  (copies only the dates Bronze lacks; emits the caught-up range)
       |
       v
   Bronze (Parquet in MinIO, date-partitioned)
@@ -55,6 +54,13 @@ coverage doesn't depend on the laptop being on (D026), while every transform sta
       v
   Superset dashboards + SQL Lab / Jupyter debugging
 ```
+
+Everything from Bronze down runs over the **range the sync discovered**, not a fixed
+"today", so a laptop that was off for a week catches up in one ordinary run.
+
+`bronze_coincap_assets` (the original local fetch) still exists for manual one-off
+pulls but is no longer part of the daily chain — see D027 for how the daily call
+migrated from local Airflow to the cloud.
 
 ---
 
@@ -103,8 +109,18 @@ coverage doesn't depend on the laptop being on (D026), while every transform sta
   Parquet to an S3 bucket, independent of the local stack (D026)
 - Reuses the Bronze Pydantic contract and object-key layout, so captured objects are
   byte-compatible with what the local Bronze DAG writes
+- Since D027 this is the **only** scheduled CoinCap call in the system
 - The only cloud dependency in the project; everything downstream stays local
+- Writes with a scoped, write-only IAM key; the local sync reads with a separate one
 - See `docs/autonomous-daily-capture.md`
+
+### Capture Sync - `bronze_capture_sync` / orchestrator task
+- Copies captured days the local Bronze doesn't have yet, byte-for-byte (no
+  transformation — the capture already applied the Pydantic contract)
+- Idempotent by construction: it syncs the set difference, so re-running copies nothing
+- Publishes the caught-up date range, which drives Silver and both Gold paths
+- Planning logic is pure and unit-tested in `dags/utils/capture_sync.py`; the standalone
+  DAG exists for manual "pull what's new" runs
 
 ### Table Format - Apache Iceberg
 - Iceberg 1.5.x on top of Spark
@@ -163,7 +179,11 @@ The gold layer optimizes for the reader, not the writer.
 - **Storage**: MinIO (`s3://bronze/crypto/assets/year=YYYY/month=MM/day=DD/assets.parquet`)
 - **Schema enforcement**: Pydantic validation at ingestion time
 - **Modeling**: none; bronze preserves source shape exactly
-- **Purpose**: immutable landing zone and source of truth for reprocessing
+- **Purpose**: landing zone and source for reprocessing
+- **Caveat**: not actually immutable. The local fetch DAG uploads with `replace=True` and
+  names objects from `logical_date`, so a late run overwrote a past date with live prices.
+  Objects for 2026-07-22..07-28 are affected and Silver holds better values — see D028
+  before reprocessing that window. The cloud capture cannot do this (D027).
 
 ### Silver
 - **Format**: Iceberg tables (Parquet underneath)
