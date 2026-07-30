@@ -96,6 +96,16 @@ def _build_endpoint(path_template: str, coin_id: str | None = None) -> str:
     return f"{COINCAP_API_BASE_URL}{path}"
 
 
+class CoinCapHistoryNotFound(RuntimeError):
+    """CoinCap has no history for this asset (HTTP 404).
+
+    Not every coin Silver has ever seen has a history series — delisted or renamed
+    assets return 404 forever. Raised as its own type so the per-coin loop can skip
+    that coin instead of aborting a backfill that has already spent credits on every
+    coin before it in the list.
+    """
+
+
 def _is_per_minute_limit(response) -> bool:
     """True only for the transient per-minute 429, not a daily/monthly quota 429.
 
@@ -140,6 +150,10 @@ def _fetch_json(url: str, headers: dict[str, str], params: dict[str, int | str])
                     "quota exhausted); not retrying to avoid burning more quota.",
                     url,
                 )
+            if exc.response is not None and exc.response.status_code == 404:
+                raise CoinCapHistoryNotFound(
+                    format_coincap_request_error(exc, url)
+                ) from exc
             raise RuntimeError(format_coincap_request_error(exc, url)) from exc
         except requests.exceptions.RequestException as exc:
             raise RuntimeError(format_coincap_request_error(exc, url)) from exc
@@ -207,9 +221,12 @@ def _extract_backfill_plan(stdout: str, stderr: str) -> dict:
         ),
     },
     default_args={
-        "retries": 2,
-        "retry_delay": duration(minutes=2),
-        "retry_exponential_backoff": True,
+        # No automatic retries: this task spends CoinCap credits, and a retry restarts
+        # the coin loop from the beginning, paying again for every coin it already
+        # fetched. The per-minute 429 backoff inside `_fetch_json` already handles the
+        # one failure that genuinely clears on its own (see I4 for the cost of
+        # retrying the wrong kind of failure). Anything else is a human's call.
+        "retries": 0,
     },
     tags=["bronze", "coincap", "backfill"],
 )
@@ -269,6 +286,7 @@ def bronze_coincap_history_backfill():
 
         asset_history_records: list[dict] = []
         asset_market_cap_records: list[dict] = []
+        coins_without_history: list[str] = []
 
         for coin_id in plan["coin_ids"]:
             asset_history_url = _build_endpoint(
@@ -280,9 +298,22 @@ def bronze_coincap_history_backfill():
                 coin_id=coin_id,
             )
 
-            asset_history_payload = _coerce_history_payload(
-                _fetch_json(asset_history_url, headers=headers, params=params)
-            )
+            # A coin Silver has seen but CoinCap has no history for (delisted or
+            # renamed) must not abort the run. Aborting throws away the credits
+            # already spent on every coin before it in the list, and the retry then
+            # spends them again on the way to the same 404.
+            try:
+                asset_history_payload = _coerce_history_payload(
+                    _fetch_json(asset_history_url, headers=headers, params=params)
+                )
+                asset_market_cap_payload = _coerce_history_payload(
+                    _fetch_json(asset_market_cap_url, headers=headers, params=params)
+                )
+            except CoinCapHistoryNotFound as exc:
+                logger.warning("Skipping %s: %s", coin_id, exc)
+                coins_without_history.append(coin_id)
+                continue
+
             validated_asset_history = CoinCapAssetHistoryResponse.model_validate(
                 asset_history_payload
             )
@@ -297,9 +328,6 @@ def bronze_coincap_history_backfill():
                 for point in validated_asset_history.data
             )
 
-            asset_market_cap_payload = _coerce_history_payload(
-                _fetch_json(asset_market_cap_url, headers=headers, params=params)
-            )
             validated_asset_market_cap = CoinCapAssetMarketCapHistoryResponse.model_validate(
                 asset_market_cap_payload
             )
@@ -312,6 +340,14 @@ def bronze_coincap_history_backfill():
                     **point.model_dump(by_alias=True),
                 }
                 for point in validated_asset_market_cap.data
+            )
+
+        if coins_without_history:
+            logger.warning(
+                "CoinCap has no history for %d of %d coin(s); backfilled without them: %s",
+                len(coins_without_history),
+                len(plan["coin_ids"]),
+                ", ".join(coins_without_history),
             )
 
         total_market_cap_payload = _coerce_history_payload(

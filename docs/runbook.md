@@ -173,6 +173,64 @@ order:
 A skip is the correct response to "nothing new", so the fault is upstream in the cloud
 capture, not in the local stack.
 
+### The orchestrator fails on `check_downstream_dags_ready`
+
+A DAG it is about to trigger is paused or missing. The message names it. Unpause with:
+
+```bash
+docker compose exec airflow-scheduler airflow dags unpause gold_coincap_assets
+```
+
+This check exists because triggering a paused DAG does *not* fail — it queues a run the
+scheduler never starts, and the orchestrator waits on it forever (I9). If the DAG is
+reported as unknown rather than paused, look for a DAG import error instead.
+
+### The sync fails with "the capture bucket is stale"
+
+Files have stopped arriving in the capture bucket. The message gives the newest date it
+found and how old it is. Check, in order:
+
+- the GitHub Actions "Daily CoinCap capture" workflow — still enabled? GitHub disables
+  scheduled workflows after 60 days of repo inactivity
+- its recent runs, for an expired CoinCap key or an IAM change
+- the bucket itself, for the expected UTC date
+
+To re-sync an old date deliberately without tripping this, set `CAPTURE_MAX_AGE_DAYS=0`.
+
+A stale bucket is a *failure* rather than a skip on purpose: a dead upstream and a quiet
+one are otherwise indistinguishable from inside the sync (I1).
+
+### A Gold coverage test fails
+
+- `gold_covers_every_silver_date` — a Silver date never got built into one or both Golds.
+  Rebuild that date (see "Spark Gold only" / "dbt Gold only" above).
+- `gold_implementations_agree_per_date` — the two implementations disagree. Usually one of
+  them was built by an older version of the model: changing a transform does not rebuild
+  the partitions it already produced. Rebuild the listed dates in both engines.
+- `daily_snapshot_no_stale_null_change` — a date was built before its predecessor landed in
+  Silver, so its change is null and nothing recomputes it (I12). Rebuild the listed dates.
+- `daily_snapshot_no_duplicate_fetch_dates` — two adjacent dates hold the same observation.
+  This is a *data* defect, not a build one; see I10/I17 and the repair path below.
+
+### A date shows 0.00% change for every coin
+
+One API response was written under two date labels, so the day-over-day change is exactly
+zero for all coins at once (I10, I11, I17). Twenty assets never all close exactly flat.
+
+Confirm it, then repair the duplicate date from history:
+
+```sql
+select snapshot_date, count(*) filter (where price_usd = prev_price_usd) as unchanged, count(*) as coins
+from gold.crypto.daily_snapshot group by 1 having count(*) = count(*) filter (where price_usd = prev_price_usd);
+```
+
+Trigger `bronze_coincap_history_backfill` with `anchor_snapshot_date` set to the day
+*after* the bad date and `backfill_days=1`; the window is the N days before the anchor, so
+this fetches exactly the one date. It merges over the duplicated row in place. Note the
+repaired day is lower fidelity: the history endpoints return no `change_percent_24hr` or
+`vwap_24hr` (D024). Then rebuild Gold for the repaired date **and the day after it**, whose
+change was computed against the bad value.
+
 ### The sync task fails with AccessDenied
 
 The local `capture_s3` connection needs a **read** key with both `s3:GetObject` (on

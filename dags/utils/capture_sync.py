@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,16 @@ MAX_SYNC_DATES = 366
 BRONZE_BUCKET = "bronze"
 BRONZE_CONN_ID = "minio_s3"
 CAPTURE_CONN_ID = "capture_s3"
+
+# How stale the newest captured date may get before the sync calls the upstream dead.
+# Two days tolerates one missed capture plus GitHub's scheduled-run drift, and still
+# notices within a day of a real outage. Set CAPTURE_MAX_AGE_DAYS=0 to disable the
+# check — the escape hatch for re-syncing an old date long after the fact.
+DEFAULT_CAPTURE_MAX_AGE_DAYS = 2
+
+
+class CaptureNotFresh(RuntimeError):
+    """The capture bucket is empty or has stopped receiving files."""
 
 
 def dates_from_keys(keys: list[str] | None) -> set[date]:
@@ -83,6 +93,52 @@ def plan_sync(
     return sorted(candidates)
 
 
+def check_capture_freshness(
+    captured_dates: set[date],
+    today: date,
+    max_age_days: int = DEFAULT_CAPTURE_MAX_AGE_DAYS,
+) -> None:
+    """Raise `CaptureNotFresh` when the capture bucket has gone quiet.
+
+    This closes the blind spot behind I1. When the CoinCap key expires or GitHub
+    disables the cron (it does that after 60 days of repo inactivity), files simply
+    stop arriving. The sync then finds nothing new and the run *skips* — which is
+    also the correct response when there is genuinely nothing new yet. A dead
+    upstream and a quiet one look identical from here, so this is the only place
+    that can tell them apart: by asking how old the newest captured date is.
+
+    `max_age_days <= 0` disables the check, for re-syncing an old date deliberately.
+    """
+    if max_age_days <= 0:
+        logger.info("Capture freshness check disabled (max_age_days=%d).", max_age_days)
+        return
+
+    if not captured_dates:
+        raise CaptureNotFresh(
+            "The capture bucket holds no snapshots at all. Either CAPTURE_S3_BUCKET "
+            "points at the wrong bucket, or the cloud capture has never succeeded. "
+            "Check the 'Daily CoinCap capture' GitHub Actions workflow."
+        )
+
+    newest = max(captured_dates)
+    age_days = (today - newest).days
+    if age_days > max_age_days:
+        raise CaptureNotFresh(
+            f"The capture bucket is stale: its newest snapshot is {newest.isoformat()}, "
+            f"{age_days} days old (limit {max_age_days}). Files have stopped arriving. "
+            "Check that the 'Daily CoinCap capture' workflow is still enabled — GitHub "
+            "disables scheduled workflows after 60 days of repo inactivity — and that "
+            "the CoinCap key has not expired."
+        )
+
+    logger.info(
+        "Capture bucket is fresh: newest snapshot %s is %d day(s) old (limit %d).",
+        newest.isoformat(),
+        age_days,
+        max_age_days,
+    )
+
+
 def _resolve_bool_param(context: dict[str, Any], param_name: str, default: bool = False) -> bool:
     """Read a boolean dag_run.conf override, tolerating the string forms the UI sends."""
     dag_run = context.get("dag_run")
@@ -128,6 +184,16 @@ def sync_captured_to_bronze(context: dict[str, Any]) -> dict[str, Any]:
     )
     logger.info(
         "Capture bucket has %d date(s); Bronze has %d.", len(captured_dates), len(local_dates)
+    )
+
+    # Deliberately before the "nothing to sync" path below: a bucket that stopped
+    # receiving files must fail, not skip quietly like a genuinely up-to-date one.
+    check_capture_freshness(
+        captured_dates,
+        today=datetime.now(timezone.utc).date(),
+        max_age_days=int(
+            os.getenv("CAPTURE_MAX_AGE_DAYS", str(DEFAULT_CAPTURE_MAX_AGE_DAYS))
+        ),
     )
 
     dates_to_sync = plan_sync(

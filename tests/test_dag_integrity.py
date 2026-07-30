@@ -2,6 +2,7 @@
 
 import pytest
 from airflow.models import DagBag
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 
 @pytest.fixture(scope="module")
@@ -216,11 +217,35 @@ class TestDagIntegrity:
         task_ids = {t.task_id for t in dag.tasks}
         assert task_ids == {
             "sync_captured_snapshots",
+            "check_downstream_dags_ready",
             "trigger_silver_assets",
             "trigger_gold_assets",
             "trigger_gold_dbt_assets",
             "trigger_gold_dbt_tests",
         }
+
+    def test_every_trigger_task_has_an_execution_timeout(self, dagbag):
+        """An untimed `wait_for_completion=True` waits forever.
+
+        That is I9: two Gold DAGs were paused, their triggered runs sat in `queued`,
+        and the orchestrator polled them for 8 days while nothing alerted. A timeout
+        turns an indefinite wait into a failed task.
+        """
+        dag = dagbag.dags["coincap_regular_orchestrator"]
+        trigger_tasks = [
+            task for task in dag.tasks if isinstance(task, TriggerDagRunOperator)
+        ]
+        assert trigger_tasks, "expected the orchestrator to trigger downstream DAGs"
+        for task in trigger_tasks:
+            assert task.execution_timeout is not None, (
+                f"{task.task_id} can wait forever; give it an execution_timeout"
+            )
+
+    def test_orchestrator_checks_downstream_dags_before_triggering(self, dagbag):
+        """The paused check must run before the first trigger, not alongside it."""
+        dag = dagbag.dags["coincap_regular_orchestrator"]
+        guard_task = dag.get_task("check_downstream_dags_ready")
+        assert "trigger_silver_assets" in {t.task_id for t in guard_task.downstream_list}
 
     def test_orchestrator_does_not_fetch_from_coincap(self, dagbag):
         """The daily CoinCap call belongs to the cloud capture now (D027).
@@ -232,10 +257,10 @@ class TestDagIntegrity:
         assert "trigger_bronze_assets" not in {t.task_id for t in dag.tasks}
 
     def test_orchestrator_dag_task_order(self, dagbag):
-        """Sync first, then Silver, then Gold, with dbt tests after the dbt build."""
+        """Sync, then the paused check, then Silver, then Gold, with dbt tests last."""
         dag = dagbag.dags["coincap_regular_orchestrator"]
         sync_task = dag.get_task("sync_captured_snapshots")
-        assert "trigger_silver_assets" in {t.task_id for t in sync_task.downstream_list}
+        assert "check_downstream_dags_ready" in {t.task_id for t in sync_task.downstream_list}
         silver_task = dag.get_task("trigger_silver_assets")
         downstream_ids = {t.task_id for t in silver_task.downstream_list}
         assert "trigger_gold_assets" in downstream_ids
