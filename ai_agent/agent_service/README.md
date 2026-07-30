@@ -5,4 +5,4 @@ EXECUTE → CHECK → CRITIC → ANSWER/REFUSE) with a budget manager that owns 
 optional critic pass, and a pinned LLM provider client. Holds no enforcement power — it can
 only ask the MCP server.
 
-No implementation yet. Loop design and budget profiles: [`../../docs/new_ARCHITECTURE.md`](../../docs/new_ARCHITECTURE.md) §5.
+No implementation yet. Loop design and budget profiles: [`../../docs/ai-agent-architecture.md`](../../docs/ai-agent-architecture.md) §5.

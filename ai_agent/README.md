@@ -19,12 +19,12 @@ publishes fresh dbt artifacts).
 
 The full design — requirements, tool contracts, guardrail spec, agent loop, eval harness,
 failure modes, and decision log — lives in
-[`../docs/new_ARCHITECTURE.md`](../docs/new_ARCHITECTURE.md). **That document is
+[`../docs/ai-agent-architecture.md`](../docs/ai-agent-architecture.md). **That document is
 authoritative.** This README is a signpost; do not paraphrase the design here (it drifts).
 
 ## Planned structure (Phase A)
 
-Mirrors the component boundaries in `new_ARCHITECTURE.md §2.2`:
+Mirrors the component boundaries in `ai-agent-architecture.md §2.2`:
 
 | Subdir            | Responsibility                                                                 |
 |-------------------|--------------------------------------------------------------------------------|

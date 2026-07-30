@@ -1,5 +1,14 @@
 # M3 - Silver Layer Setup & Reference
 
+> **Historical record — 2026-04.** Kept for the modelling reasoning (why coins and price
+> snapshots are separate tables, why `rank` is not persisted), which still holds. What has
+> changed since: Silver now processes a **date range** discovered by the capture sync rather
+> than a single `target_date` (D027), and a handful of dates were repaired from the history
+> endpoints, so some rows have null `vwap_24hr` / `change_percent_24hr` by construction
+> (D024, I17).
+>
+> Current behaviour: [`architecture.md`](architecture.md) · [`runbook.md`](runbook.md).
+
 ## What Was Built
 
 A PySpark transformation pipeline that reads daily bronze Parquet data and writes to

@@ -9,7 +9,7 @@ conventions favor clarity over ceremony.
 The existing Bronze/Silver/Gold pipeline is **stable and off-limits** to the new work.
 When building the [`ai_agent/`](ai_agent) module, do **not** change DAGs, PySpark
 transforms, or dbt models. The agent layer extends the platform through read-only access
-and configuration only. Design authority is [`docs/new_ARCHITECTURE.md`](docs/new_ARCHITECTURE.md).
+and configuration only. Design authority is [`docs/ai-agent-architecture.md`](docs/ai-agent-architecture.md).
 
 ## Where things live
 

@@ -5,4 +5,4 @@ result returns": tool router (stdio + streamable-HTTP frontends), the guardrail 
 validation, Gold allow-list, row/scan/budget caps, audit log), and the Trino / Iceberg /
 dbt adapters. LLM-agnostic — it knows nothing about questions or answers.
 
-No implementation yet. Contracts and guardrail spec: [`../../docs/new_ARCHITECTURE.md`](../../docs/new_ARCHITECTURE.md) §3–§4.
+No implementation yet. Contracts and guardrail spec: [`../../docs/ai-agent-architecture.md`](../../docs/ai-agent-architecture.md) §3–§4.

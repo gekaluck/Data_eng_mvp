@@ -1,7 +1,12 @@
-# CODE.md — Agent Operating Rules
+# CLAUDE.md — Agent Operating Rules
 
 This file defines **how the agent must operate** while working in this repository.
 It is intentionally short and procedural.
+
+For *what the project is* and which document is authoritative on what, start at
+[`docs/README.md`](docs/README.md) — the documentation map and evolution story. Read it
+before making design claims about this repo; several docs are deliberately kept as
+historical records and are not descriptions of how the system works today.
 
 ---
 

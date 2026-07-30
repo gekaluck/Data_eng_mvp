@@ -659,10 +659,16 @@ object-key layout, so its output is byte-compatible with what the Bronze DAG wri
 snapshot to land somewhere the local stack can read without a sync step.
 ---
 
-## D027 - Superset serves canonical dbt Gold through read-only Trino
+## D030 — Superset Serves Canonical dbt Gold Through Read-Only Trino (was a second D027)
 
 **Date**: 2026-07-18
 **Status**: Accepted
+
+**Numbering note**: originally filed as a second **D027**, in parallel with the
+cloud-capture D027 below — two PRs in flight picked the same next number. Renumbered to
+D030 on 2026-07-30. The cloud-capture entry kept D027 because far more of the repo already
+referenced it. Left in date order here rather than moved to the end, so the decision log
+still reads chronologically.
 
 **Decision**:
 - Add Apache Superset as an optional local `serving` Compose profile.
