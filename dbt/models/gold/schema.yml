@@ -1,129 +1,294 @@
 version: 2
 
+# These descriptions are the semantic layer. They flow into dbt docs, which the planned
+# AI-agent layer exposes as a tool (see docs/ai-agent-architecture.md §3-§4), so anything
+# a reader could get confidently wrong belongs here rather than in a comment.
+#
+# Three properties of this dataset are non-obvious and change how almost every aggregate
+# should be read:
+#
+#   1. Coverage is SPARSE. 107 distinct dates spanning ~198 calendar days. "Average daily
+#      change over the last 30 days" is really "over however many of those 30 days exist".
+#   2. Null does not mean zero, and rarely means missing data. A null day-over-day change
+#      means the *previous day* is absent, which is normal and by design (D025).
+#   3. Some days are lower fidelity. Dates repaired from the CoinCap history endpoints have
+#      null vwap_24hr and a wider coin universe (25 vs the usual ~20), because those
+#      endpoints return less than /assets does (D024, incidents I17).
+
 models:
   - name: daily_snapshot
-    description: Daily Gold snapshot with current price, prior-day price, and ranked daily percentage change.
+    description: >-
+      One row per coin per snapshot date: price, market-cap rank, and the day-over-day
+      price change. The primary Gold table and the one most questions should start from.
+
+      Grain: (snapshot_date, coin_id). Typically ~20 coins per date.
+
+      Read the change columns carefully. prev_price_usd, price_change_pct and
+      price_change_rank are all null when the immediately preceding calendar date is
+      absent from Silver, which happens often because coverage is sparse (D025). They are
+      never zero-filled, so AVG and SUM over them silently skip those rows - which is
+      usually right, but means the denominator is not the number of dates you asked for.
     tests:
       - unique:
           column_name: "concat(cast(snapshot_date as varchar), '::', coin_id)"
     columns:
       - name: snapshot_date
-        description: Snapshot date for the daily Gold record.
+        description: >-
+          The date this observation is labelled with, in UTC. Not a continuous series -
+          missing dates are genuinely absent, not zero-activity days.
         tests:
           - not_null
       - name: coin_id
-        description: Stable CoinCap coin identifier.
+        description: Stable CoinCap asset identifier (e.g. `bitcoin`). Join key to `silver.crypto.coins`.
         tests:
           - not_null
           - relationships:
               to: source('silver', 'coins')
               field: id
+      - name: symbol
+        description: Trading symbol (e.g. `BTC`). Display only - not stable enough to join on.
+      - name: name
+        description: Full display name (e.g. `Bitcoin`).
+      - name: coin_rank
+        description: >-
+          Rank by market cap within this snapshot date, 1 = largest. Computed from the
+          day's own data, not carried over from the CoinCap payload's own rank field
+          (which is deliberately not persisted - see docs/m3-silver.md).
       - name: price_usd
-        description: Coin price in USD on the snapshot date.
+        description: Price in USD at fetch time on the snapshot date.
         tests:
           - not_null
+      - name: prev_price_usd
+        description: >-
+          Price on the immediately preceding calendar date. NULL when that date is absent
+          from Silver - the row is kept rather than dropped (D025, incident I3).
+      - name: price_change_pct
+        description: >-
+          Percent change from prev_price_usd, as a percentage (2.5 means +2.5%, not 0.025).
+
+          NULL means the previous calendar day is missing, not that the price was flat.
+          Filtering `where price_change_pct is not null` restricts you to days that follow
+          a covered day. If you need the count of days actually compared, count that
+          filtered set rather than assuming it equals the date range.
+      - name: price_change_rank
+        description: >-
+          Rank of this coin's price_change_pct within the snapshot date, 1 = largest gain.
+          NULL exactly when price_change_pct is null: coins with an unknown change are
+          excluded from the ranking rather than given an arbitrary position (D025).
+      - name: market_cap_usd
+        description: Market capitalisation in USD on the snapshot date.
+      - name: volume_usd_24hr
+        description: >-
+          Trailing 24-hour trading volume in USD, as reported at fetch time. Sparse on
+          dates repaired from the history endpoints.
+      - name: vwap_24hr
+        description: >-
+          Volume-weighted average price over the trailing 24 hours. NULL for every date
+          repaired from the CoinCap history endpoints, which do not return it (D024) -
+          so a coin's vwap series has holes that its price series does not.
 
   - name: mc_rank_change
-    description: Daily Gold view of market-cap rank and rank deltas versus 14-day and 30-day lookbacks.
+    description: >-
+      Market-cap rank and price movement versus fixed 14-day and 30-day lookbacks.
+
+      Grain: (snapshot_date, coin_id).
+
+      IMPORTANT: the lookbacks require the *exact* calendar date - `snapshot_date - 14`
+      and `snapshot_date - 30` - to exist in the data. There is no nearest-available
+      fallback. Because coverage is sparse, all four delta columns are null on many dates,
+      and that means "the comparison date is missing", never "the rank did not move".
+      Do not read a null delta as stability.
     tests:
       - unique:
           column_name: "concat(cast(snapshot_date as varchar), '::', coin_id)"
     columns:
       - name: snapshot_date
-        description: Snapshot date for the daily Gold record.
+        description: The date being evaluated, in UTC.
         tests:
           - not_null
       - name: coin_id
-        description: Stable CoinCap coin identifier.
+        description: Stable CoinCap asset identifier.
         tests:
           - not_null
           - relationships:
               to: source('silver', 'coins')
               field: id
+      - name: symbol
+        description: Trading symbol. Display only.
+      - name: name
+        description: Full display name.
       - name: price_usd
-        description: Coin price in USD on the snapshot date.
+        description: Price in USD on the snapshot date.
         tests:
           - not_null
+      - name: market_cap_usd
+        description: Market capitalisation in USD on the snapshot date.
+      - name: mc_rank
+        description: Rank by market cap within the snapshot date, 1 = largest.
+      - name: mc_rank_diff_14d
+        description: >-
+          Rank improvement versus exactly 14 calendar days earlier. POSITIVE means the coin
+          moved UP the table (its rank number got smaller), which is the opposite sign to a
+          naive `today - past` subtraction. NULL when that exact date is absent.
+      - name: mc_rank_diff_30d
+        description: >-
+          Same as mc_rank_diff_14d over a 30-day lookback. Positive = moved up. NULL when
+          the exact lookback date is absent.
+      - name: price_diff_14d_pct
+        description: >-
+          Percent price change versus exactly 14 calendar days earlier. NULL when that date
+          is absent from the data.
+      - name: price_diff_30d_pct
+        description: >-
+          Percent price change versus exactly 30 calendar days earlier. NULL when that date
+          is absent from the data.
 
   - name: wkly_roll_avg
-    description: Daily Gold view of 7-row rolling average price and volume metrics by coin.
+    description: >-
+      Rolling average price and volume per coin, over a 7-ROW window - not a 7-day one.
+
+      Grain: (snapshot_date, coin_id).
+
+      The window is `rows between 6 preceding and current row` over the available
+      snapshots, so with sparse coverage it spans however many calendar days those seven
+      rows happen to cover. Across the large 2026-04 to 2026-07 gap it can span months.
+      Treat it as "average of the last 7 observations", and do not describe it as a weekly
+      average without that caveat. Early dates average fewer than 7 rows rather than
+      returning null.
     tests:
       - unique:
           column_name: "concat(cast(snapshot_date as varchar), '::', coin_id)"
     columns:
       - name: snapshot_date
-        description: Snapshot date for the daily Gold record.
+        description: The date being evaluated, in UTC.
         tests:
           - not_null
       - name: coin_id
-        description: Stable CoinCap coin identifier.
+        description: Stable CoinCap asset identifier.
         tests:
           - not_null
           - relationships:
               to: source('silver', 'coins')
               field: id
+      - name: symbol
+        description: Trading symbol. Display only.
+      - name: name
+        description: Full display name.
       - name: price_usd
-        description: Coin price in USD on the snapshot date.
+        description: Price in USD on the snapshot date.
         tests:
           - not_null
+      - name: market_cap_usd
+        description: Market capitalisation in USD on the snapshot date.
+      - name: volume_usd_24hr
+        description: Trailing 24-hour volume in USD on the snapshot date.
+      - name: vwap_24hr
+        description: Volume-weighted average price over 24h; null on history-repaired dates.
+      - name: wkly_roll_avg_price
+        description: >-
+          Mean price_usd over this row and the 6 preceding available snapshots for the same
+          coin. Spans 7 calendar days only where coverage is contiguous.
+      - name: wkly_roll_avg_volume
+        description: >-
+          Mean volume_usd_24hr over the same 7-row window. Inherits any nulls in the
+          underlying volume series, which are common on history-repaired dates.
 
   - name: data_availability_daily
     description: >-
-      Calendar-complete serving-layer coverage table. One row is emitted for every
-      date from the first Silver snapshot through the configured end date, including
-      dates on which no data exists.
+      Calendar-complete coverage table: one row for EVERY date from the first Silver
+      snapshot to the configured end date, including dates with no data at all.
+
+      Grain: snapshot_date, one row per calendar day.
+
+      This is the right table for any question about coverage, gaps, or "how much data do
+      we actually have". Querying the fact tables for that gives a misleading answer,
+      because a missing date is simply an absent row there - it cannot tell you the
+      difference between "no data" and "you filtered it out".
     tests:
       - unique:
           column_name: snapshot_date
     columns:
       - name: snapshot_date
-        description: Calendar date whose local analytical availability is evaluated.
+        description: Calendar date whose availability is evaluated. Contiguous, with no gaps.
         tests:
           - not_null
       - name: expected_asset_count
-        description: Minimum expected CoinCap asset count, configured with a dbt variable.
+        description: Minimum expected asset count for a date to count as complete, set by a dbt variable.
         tests:
           - not_null
       - name: silver_row_count
-        description: Number of Silver price snapshot rows available for the date.
+        description: Silver price-snapshot rows present for the date. 0 means the date is genuinely absent.
         tests:
           - not_null
       - name: daily_snapshot_row_count
-        description: Number of dbt daily snapshot rows available for the date.
+        description: dbt `daily_snapshot` rows for the date. Below silver_row_count means Gold is behind Silver.
         tests:
           - not_null
       - name: rank_change_row_count
-        description: Number of dbt market-cap rank-change rows available for the date.
+        description: dbt `mc_rank_change` rows for the date.
         tests:
           - not_null
       - name: weekly_average_row_count
-        description: Number of dbt weekly-average rows available for the date.
+        description: dbt `weekly_roll_avg` rows for the date.
         tests:
           - not_null
+      - name: source_coverage_pct
+        description: silver_row_count as a percentage of expected_asset_count.
+      - name: daily_snapshot_coverage_pct
+        description: daily_snapshot_row_count as a percentage of expected_asset_count.
       - name: availability_status
-        description: "Overall serving status: available, partial, or missing."
+        description: >-
+          `available` (complete), `partial` (some data, below expectation), or `missing`
+          (no data). Prefer filtering on this over reasoning about the counts directly.
         tests:
           - not_null
           - accepted_values:
               values: ['available', 'partial', 'missing']
       - name: availability_reason
-        description: First deterministic reason explaining a partial or missing date.
+        description: First deterministic reason a date is partial or missing. Null when available.
 
   - name: latest_market_snapshot
-    description: Latest available dbt daily snapshot, materialized for dashboard charts that must not embed subqueries in filters.
+    description: >-
+      The most recent snapshot date only, one row per coin - same columns and same
+      semantics as `daily_snapshot`.
+
+      Grain: coin_id.
+
+      It exists because Superset charts cannot embed a `max(snapshot_date)` subquery in a
+      filter, so this is a materialised convenience, not a distinct concept. For anything
+      involving more than the latest day, use `daily_snapshot`. Note "latest" means the
+      latest date present in the data, which may not be today if the pipeline is behind.
     tests:
       - unique:
           column_name: coin_id
     columns:
       - name: snapshot_date
-        description: Latest available snapshot date.
+        description: The latest snapshot date present in `daily_snapshot`. Identical on every row.
         tests:
           - not_null
       - name: coin_id
-        description: Stable CoinCap coin identifier.
+        description: Stable CoinCap asset identifier.
         tests:
           - not_null
+      - name: symbol
+        description: Trading symbol. Display only.
+      - name: name
+        description: Full display name.
+      - name: coin_rank
+        description: Rank by market cap on the latest date, 1 = largest.
       - name: price_usd
-        description: Latest price in USD.
+        description: Price in USD on the latest date.
         tests:
           - not_null
+      - name: prev_price_usd
+        description: Price on the preceding calendar date; null if that date is absent.
+      - name: price_change_pct
+        description: Percent change vs the preceding date; null when that date is absent (not flat).
+      - name: price_change_rank
+        description: Rank by price_change_pct on the latest date; null when the change is unknown.
+      - name: market_cap_usd
+        description: Market capitalisation in USD on the latest date.
+      - name: volume_usd_24hr
+        description: Trailing 24-hour volume in USD.
+      - name: vwap_24hr
+        description: Volume-weighted average price over 24h; null on history-repaired dates.
