@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  # The Spark-built Gold tables. dbt does not manage these — they are the *other*
+  # implementation of the same models, built by spark/gold_transform.py and declared
+  # here only so the cross-implementation tests can compare the two side by side
+  # (see dbt/tests/gold_implementations_agree_per_date.sql).
+  - name: gold_spark
+    description: "Spark-built Gold Iceberg tables, kept alongside the dbt ones for comparison."
+    database: gold
+    schema: crypto
+    tables:
+      - name: daily_snapshot
+        description: "Spark's per-coin daily snapshot with day-over-day price change."
