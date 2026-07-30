@@ -128,8 +128,8 @@ def test_transform_history_backfill_merges_into_all_target_tables(
     spark.sql(
         f"""
         INSERT INTO {CATALOG_NAME}.crypto.coins VALUES
-        ('bitcoin', 'BTC', 'Bitcoin', 1, 19500000.0, 21000000.0),
-        ('ethereum', 'ETH', 'Ethereum', 2, 120000000.0, NULL)
+        ('bitcoin', 'BTC', 'Bitcoin', 19500000.0, 21000000.0),
+        ('ethereum', 'ETH', 'Ethereum', 120000000.0, NULL)
         """
     )
     spark.sql(
