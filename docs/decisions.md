@@ -823,9 +823,14 @@ lacks, and `overwrite` is opt-in. Neither can stamp an old date with new prices.
 **Update (2026-07-30)**: the *duplicated* dates are a different case from the merely
 suspect ones, and are worth repairing individually. A single-date backfill costs ~50 calls
 and merges over the bad row in place (`WHEN MATCHED THEN UPDATE SET *`), so the choice is
-per-date rather than all-or-nothing. 07-19 was repaired this way (I17); 07-23 has not been.
-The rest of the 07-22..07-28 window stays as D028 describes — do not rebuild Silver from
-Bronze there.
+per-date rather than all-or-nothing. Both duplicated dates — 07-19 (I17) and 07-23 — have
+been repaired this way. Measured cost: ~50 calls and ~20 minutes each, and two in one day
+did not exhaust the monthly quota, so "~100 credits per day of data" reads as an upper
+bound. The unit of spend is the date.
+
+The rest of the 07-22..07-28 window stays exactly as D028 describes — those dates are
+*suspect* but not provably wrong, and there is no signature to repair against. Do not
+rebuild Silver from Bronze there.
 
 **Revisit if**: We add a fetch timestamp to Bronze (which would make this diagnosable
 rather than inferred), or we need a provable-provenance rebuild.

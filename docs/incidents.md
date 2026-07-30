@@ -254,8 +254,8 @@ The test fails on 07-23 today.
 excellent assertions.
 
 **Update (2026-07-30)**: Running the same signature across all history turned up a second
-instance on 07-19 (I17), outside the window D028 had recorded. 07-19 has been repaired from
-history; 07-23 still fails this test.
+instance on 07-19 (I17), outside the window D028 had recorded. Both 07-19 and 07-23 have
+now been repaired from `/assets/{id}/history`, and this test passes across all 107 dates.
 
 ---
 
@@ -383,10 +383,10 @@ Two properties of a repaired day, both expected:
   07-19 has 25 rows where its neighbours have 20. The five extra coins have no 07-18 row,
   so their change is correctly null.
 
-**Still outstanding**: 07-23, the duplicate pair from I10 proper, is unrepaired and still
-shows a fabricated 0.00% market. The same single-date backfill fixes it
-(`anchor_snapshot_date=2026-07-24, backfill_days=1`) at the cost of another ~50 calls;
-it was left as a separate, deliberate spend.
+**07-23 too**: the duplicate pair from I10 proper was repaired the same way
+(`anchor_snapshot_date=2026-07-24, backfill_days=1`), then Gold rebuilt for 07-23 and
+07-24. BTC went from 65060.9 (07-22's price) to 66103.17, a real +1.60% day. No date in
+the 107-date history now shows every coin unchanged from the previous day.
 
 **Note**: Both members of a duplicated pair are suspect, not just the second. The fetch
 happened on 07-20, so 07-18's row is *also* really a 07-20 observation. Only the duplicate
