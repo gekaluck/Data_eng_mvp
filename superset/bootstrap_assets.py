@@ -39,6 +39,7 @@ CHART_UUIDS = {
     "movers": UUID("33333333-3333-4333-8333-333333333332"),
     "price": UUID("33333333-3333-4333-8333-333333333333"),
     "rank": UUID("33333333-3333-4333-8333-333333333334"),
+    "rolling": UUID("33333333-3333-4333-8333-33333333333e"),
     # Pipeline Health tab
     "availability": UUID("33333333-3333-4333-8333-333333333335"),
     "freshness_days": UUID("33333333-3333-4333-8333-333333333338"),
@@ -204,6 +205,7 @@ def market_charts(datasets: dict[str, object]) -> list[dict[str, object]]:
     daily = datasets["daily_snapshot"]
     latest = datasets["latest_market_snapshot"]
     rank = datasets["mc_rank_change"]
+    weekly = datasets["weekly_roll_avg"]
     return [
         {
             "key": "market",
@@ -296,8 +298,47 @@ def market_charts(datasets: dict[str, object]) -> list[dict[str, object]]:
                 "include_search": True,
                 "order_by_cols": ['["snapshot_date", false]', '["mc_rank", true]'],
                 "page_length": 25,
-                "row_limit": 1_000,
+                # Newest date first, then 25 rows: the current standings, not all
+                # 2,175 rows of history. Use the date filter to pin an older day.
+                "row_limit": 25,
                 "table_filter": True,
+            },
+        },
+        {
+            "key": "rolling",
+            "name": "Price vs 7-Day Rolling Average",
+            "dataset": weekly,
+            "viz_type": "echarts_timeseries_line",
+            # weekly_roll_avg was the one provisioned dataset no chart read. Price
+            # against its own trailing average is the question that model exists to
+            # answer, and it is not asked anywhere else on the dashboard.
+            #
+            # One coin at a time by design: absolute USD prices span BTC at ~64,000
+            # and USDT at ~1, so overlaying coins on a shared axis would be
+            # unreadable. series_limit 1 defaults to the largest by market cap; the
+            # Symbol filter swaps which coin is shown.
+            #
+            # Price only, not volume: wkly_roll_avg_volume is null on most of the
+            # history (28% field coverage, see Pipeline Health), so a volume line
+            # would be mostly absent and would imply data we do not have.
+            "params": {
+                "granularity_sqla": "snapshot_date",
+                "groupby": ["symbol"],
+                "metrics": [
+                    sql_metric("Price (USD)", "avg(price_usd)"),
+                    sql_metric("7-day rolling average (USD)", "avg(wkly_roll_avg_price)"),
+                ],
+                "row_limit": 10_000,
+                "series_limit": 1,
+                "series_limit_metric": sql_metric(
+                    "Average market cap (USD)",
+                    "avg(market_cap_usd)",
+                ),
+                "show_legend": True,
+                "time_grain_sqla": "P1D",
+                "x_axis": "snapshot_date",
+                "x_axis_time_format": "smart_date",
+                "y_axis_format": USD_PRICE_FORMAT,
             },
         },
     ]
@@ -546,8 +587,8 @@ def dashboard_positions(market: list[object], health: list[object]) -> dict[str,
     add_tab(
         "TAB-market",
         "Market",
-        rows=[market[0:2], market[2:4]],
-        heights=[50, 50],
+        rows=[market[0:2], market[2:4], market[4:5]],
+        heights=[50, 50, 50],
     )
     add_tab(
         "TAB-health",

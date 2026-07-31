@@ -10,7 +10,7 @@ The dashboard has two tabs, because it answers two different questions (D031):
 
 | Tab | Question | Contents |
 |---|---|---|
-| **Market** | What does the data say? | Latest snapshot, sorted daily movers, cumulative 30-day price change, rank changes |
+| **Market** | What does the data say? | Latest snapshot, sorted daily movers, cumulative 30-day price change, current rank standings, price vs its 7-day rolling average |
 | **Pipeline Health** | Can the data be believed? | Freshness / 30-day coverage / streak tiles, per-day coverage strip, monthly mix, field completeness, per-date detail |
 
 Three native filters apply across the dashboard: **Date range**, **Symbol**, and
