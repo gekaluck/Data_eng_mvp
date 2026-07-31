@@ -345,6 +345,14 @@ def market_charts(datasets: dict[str, object]) -> list[dict[str, object]]:
                 "show_legend": True,
                 "time_grain_sqla": "P1D",
                 "time_range": "Last 30 days",
+                # Scale to the data instead of anchoring at zero. A price series
+                # oscillating around $64,000 was drawn as two flat lines in the top
+                # tenth of a chart whose axis started at $0 — the gap between price
+                # and its own average, the whole point here, was invisible. Bounds
+                # are left empty on purpose so this follows whichever coin and date
+                # range the filters select.
+                "truncateYAxis": True,
+                "y_axis_bounds": [None, None],
                 "x_axis": "snapshot_date",
                 "x_axis_time_format": "smart_date",
                 # `~` trims trailing zeros: BTC reads $64,139.58 and USDT still
