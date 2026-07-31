@@ -58,6 +58,12 @@ capture the *only* scheduled call with local Airflow syncing from the bucket (D0
 reliable thing in the system. Capture and processing have opposite requirements — only the
 cheap, must-not-miss half needed to leave the laptop.
 
+**The gap itself is permanent, by decision** ([D032](decisions.md)). Buying it back would
+cost ~17 months of free quota and would return only price and market cap — 3 of the 5
+measure columns are null on a history-repaired day. Sparse coverage is now a documented
+property of this dataset, not an open defect. Do not propose filling it without a specific
+requirement that needs it.
+
 ---
 
 ## I2 — Credit exhaustion from deep backfill

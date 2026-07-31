@@ -119,8 +119,10 @@ at the bottom of [`incidents.md`](incidents.md).
 Worth knowing before writing a query or an analysis, and doubly so before pointing an LLM
 at it:
 
-- **Coverage is sparse.** 107 distinct dates spanning ~198 calendar days. Any "over the last
-  N days" question is answering over a series with holes.
+- **Coverage is sparse, permanently and on purpose.** 107 distinct dates spanning ~198
+  calendar days, with an 87-day gap (2026-04-08 → 07-03) and a 4-day one in March. Any "over
+  the last N days" question is answering over a series with holes. The gaps will not be
+  filled — see [D032](decisions.md) for why, and don't propose backfilling them.
 - **`price_change_pct` is null by design** on the first day after a gap (D025). It is not
   missing data; it means the previous day genuinely isn't there.
 - **Repaired days are lower fidelity.** Dates rebuilt from the history endpoints have null

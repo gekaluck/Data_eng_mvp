@@ -97,13 +97,25 @@ learn from becomes a thing you have to maintain, and it fails silently.**
 
 The commit log has a hole here. So does the data.
 
-That is not a coincidence — it is the same hole. The only thing fetching CoinCap was a
-local Airflow DAG, so data accrued only on days the laptop happened to be on
-([I1](incidents.md): a ~92-day gap in Silver). The pipeline was never broken during this
-period. It simply wasn't running, and nothing anywhere said so.
+That is not a coincidence — it is the same hole. The honest version: I built the skeleton of
+the project, my priorities moved to other things, and I came back to it three months later.
+Nothing failed. The only thing fetching CoinCap was a local Airflow DAG, so data accrued
+only on days the laptop happened to be on — and for three months, it wasn't
+([I1](incidents.md): an 87-day gap, 2026-04-08 → 07-03, plus a 4-day one in March).
 
 For a write-up this is the strongest single image the project has: *put the git history and
-the data coverage chart side by side and they are the same picture.*
+the data coverage chart side by side and they are the same picture.* A side project's
+coverage is a record of the author's attention, and nothing in the architecture said so
+until it was too late to fix.
+
+**The gap is staying.** It was tempting to buy the history back and present a smooth line,
+and that turned out to be the wrong instinct for three separate reasons — recorded as
+[D032](decisions.md). The short version: it would cost roughly 17 months of free quota, the
+history endpoints return only 2 of the 5 measure columns so the "filled" region would be
+mostly null anyway, and a sparse dataset is a *better* test bed than a dense one for the
+agent layer being built next, whose whole design is about refusing to answer when the data
+can't support it. Filling the gap would have deleted the most interesting thing to test
+against, and paid for the privilege.
 
 ---
 
