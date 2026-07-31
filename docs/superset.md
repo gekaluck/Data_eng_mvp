@@ -6,6 +6,18 @@ Apache Superset is the user-facing BI and exploration layer over the curated dbt
 Gold schema. Jupyter remains the engineering/debugging surface; Superset provides
 reusable charts, dashboards, filters, and SQL Lab without adding another data copy.
 
+The dashboard has two tabs, because it answers two different questions (D031):
+
+| Tab | Question | Contents |
+|---|---|---|
+| **Market** | What does the data say? | Latest snapshot, sorted daily movers, cumulative 30-day price change, rank changes |
+| **Pipeline Health** | Can the data be believed? | Freshness / 30-day coverage / streak tiles, per-day coverage strip, monthly mix, field completeness, per-date detail |
+
+Three native filters apply across the dashboard: **Date range**, **Symbol**, and
+**Market-cap rank**. The three KPI tiles are deliberately excluded from the date
+filter — "days since last snapshot" is a statement about now, and windowing it
+would make it lie.
+
 The query path is:
 
 ```text
@@ -86,6 +98,18 @@ asset count is 20 and can be overridden with the dbt variable
 This reports **local analytical availability**. It does not prove that PR 14's
 remote capture bucket contains an object; that requires the later cloud-to-MinIO
 sync/manifest phase.
+
+### Row counts are not field completeness
+
+`availability_status` counts rows. It says nothing about how full those rows are:
+backfilled days carry price and market cap but no `volume_usd_24hr` or `vwap_24hr`
+at all, so `weekly_roll_avg_volume` is null across most of the history. As of
+2026-07-31, 77 of 107 `available` days have zero volume coverage.
+
+`volume_coverage_pct` and `vwap_coverage_pct` report this per date and drive the
+**Field Completeness** chart. They are informational and deliberately do not feed
+`availability_status` — folding them in would mark ~72% of history `partial` and
+conflate "did the pipeline run" with "how rich is this day" (D031).
 
 ## Access boundary
 

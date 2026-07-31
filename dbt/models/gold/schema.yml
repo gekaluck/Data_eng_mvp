@@ -88,6 +88,14 @@ models:
         description: Number of Silver price snapshot rows available for the date.
         tests:
           - not_null
+      - name: volume_row_count
+        description: Silver rows for the date that carry a non-null 24h volume.
+        tests:
+          - not_null
+      - name: vwap_row_count
+        description: Silver rows for the date that carry a non-null 24h VWAP.
+        tests:
+          - not_null
       - name: daily_snapshot_row_count
         description: Number of dbt daily snapshot rows available for the date.
         tests:
