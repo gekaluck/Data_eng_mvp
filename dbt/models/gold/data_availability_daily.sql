@@ -33,10 +33,15 @@ calendar as (
     where start_date <= end_date
 ),
 
+-- Row counts alone pass a day that arrived structurally incomplete: backfilled days
+-- carry price and market cap but no volume or vwap. Counting the populated fields
+-- separately keeps that visible without changing what `available` means.
 silver_daily as (
     select
         snapshot_date,
-        count(*) as silver_row_count
+        count(*) as silver_row_count,
+        count(volume_usd_24hr) as volume_row_count,
+        count(vwap_24hr) as vwap_row_count
     from {{ source('silver', 'price_snapshots') }}
     group by snapshot_date
 ),
@@ -70,6 +75,8 @@ coverage as (
         calendar.snapshot_date,
         cast({{ expected_asset_count }} as integer) as expected_asset_count,
         cast(coalesce(silver.silver_row_count, 0) as integer) as silver_row_count,
+        cast(coalesce(silver.volume_row_count, 0) as integer) as volume_row_count,
+        cast(coalesce(silver.vwap_row_count, 0) as integer) as vwap_row_count,
         cast(coalesce(daily.daily_snapshot_row_count, 0) as integer) as daily_snapshot_row_count,
         cast(coalesce(rank_change.rank_change_row_count, 0) as integer) as rank_change_row_count,
         cast(coalesce(weekly.weekly_average_row_count, 0) as integer) as weekly_average_row_count
@@ -88,6 +95,8 @@ select
     snapshot_date,
     expected_asset_count,
     silver_row_count,
+    volume_row_count,
+    vwap_row_count,
     daily_snapshot_row_count,
     rank_change_row_count,
     weekly_average_row_count,
@@ -95,6 +104,10 @@ select
         as source_coverage_pct,
     round(100.0 * daily_snapshot_row_count / nullif(silver_row_count, 0), 2)
         as daily_snapshot_coverage_pct,
+    round(100.0 * volume_row_count / nullif(silver_row_count, 0), 2)
+        as volume_coverage_pct,
+    round(100.0 * vwap_row_count / nullif(silver_row_count, 0), 2)
+        as vwap_coverage_pct,
     case
         when silver_row_count = 0 then 'missing'
         when silver_row_count < expected_asset_count then 'partial'

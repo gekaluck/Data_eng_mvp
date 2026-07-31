@@ -102,8 +102,12 @@ migrated from local Airflow to the cloud.
 ### Serving Layer - Apache Superset
 - Runs as an optional Docker Compose profile for end-user exploration
 - Reads canonical dbt Gold relations through Trino; it does not copy lake data
-- Provisions the connection, datasets, charts, and dashboard idempotently from code
-- Includes a daily availability view that exposes available, partial, and missing dates
+- Provisions the connection, datasets, charts, filters, and dashboard idempotently from code
+- Splits into a **Market** tab and a **Pipeline Health** tab: what the data says, and
+  whether it can be believed (D031)
+- Includes a daily availability view that exposes available, partial, and missing dates,
+  plus per-date field completeness — row counts alone pass a day that arrived without
+  volume or VWAP
 
 ### Storage - MinIO
 - S3-compatible object storage, runs as a Docker container
@@ -211,6 +215,9 @@ The gold layer optimizes for the reader, not the writer.
   with null change columns (D025), and dbt tests assert that both implementations cover
   every Silver date, agree on row counts per date, and never leave a null change where
   Silver holds the previous day (D029)
+- **Every serving model is asserted, not just the flagship one**: the three dbt serving
+  models must agree on per-date row counts. Two of them silently held 9 dates against
+  `daily_snapshot`'s 107 until this was checked (I19)
 
 ---
 

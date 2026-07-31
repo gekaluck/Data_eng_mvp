@@ -8,6 +8,10 @@
 
 {% set snapshot_date = var('snapshot_date', none) %}
 
+-- The lookback joins below match on coin_id *and* the offset date. Matching on
+-- coin_id alone only works when the model is restricted to a single snapshot_date;
+-- across full history it would join every date to every other date. Keeping the
+-- offset in the join is what makes a full-refresh backfill possible.
 with base_snapshots as (
     select
         coin_id,
@@ -55,25 +59,21 @@ today as (
 lookback_14d as (
     select
         coin_id,
+        snapshot_date,
         price_usd as price_usd_t_14,
         market_cap_usd as market_cap_usd_t_14,
         mc_rank as mc_rank_t_14
     from ranked_snapshots
-    {% if snapshot_date %}
-    where snapshot_date = date_add('day', -14, cast('{{ snapshot_date }}' as date))
-    {% endif %}
 ),
 
 lookback_30d as (
     select
         coin_id,
+        snapshot_date,
         price_usd as price_usd_t_30,
         market_cap_usd as market_cap_usd_t_30,
         mc_rank as mc_rank_t_30
     from ranked_snapshots
-    {% if snapshot_date %}
-    where snapshot_date = date_add('day', -30, cast('{{ snapshot_date }}' as date))
-    {% endif %}
 ),
 
 coins as (
@@ -99,7 +99,9 @@ select
 from today t
 left join lookback_14d d14
     on t.coin_id = d14.coin_id
+    and d14.snapshot_date = date_add('day', -14, t.snapshot_date)
 left join lookback_30d d30
     on t.coin_id = d30.coin_id
+    and d30.snapshot_date = date_add('day', -30, t.snapshot_date)
 left join coins c
     on t.coin_id = c.coin_id
