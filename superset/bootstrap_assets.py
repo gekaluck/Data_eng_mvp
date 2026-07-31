@@ -321,9 +321,17 @@ def market_charts(datasets: dict[str, object]) -> list[dict[str, object]]:
             # Price only, not volume: wkly_roll_avg_volume is null on most of the
             # history (28% field coverage, see Pipeline Health), so a volume line
             # would be mostly absent and would imply data we do not have.
+            #
+            # Defaults to 30 days because the full range is mostly the Apr 8 - Jul 9
+            # coverage hole (I1), which a line chart draws as a long straight
+            # segment between two real observations. Markers are on so the actual
+            # observations are visible: across a gap the line is interpolation, and
+            # the absence of markers is what says so. Widen with the date filter.
             "params": {
                 "granularity_sqla": "snapshot_date",
                 "groupby": ["symbol"],
+                "markerEnabled": True,
+                "markerSize": 5,
                 "metrics": [
                     sql_metric("Price (USD)", "avg(price_usd)"),
                     sql_metric("7-day rolling average (USD)", "avg(wkly_roll_avg_price)"),
@@ -336,9 +344,12 @@ def market_charts(datasets: dict[str, object]) -> list[dict[str, object]]:
                 ),
                 "show_legend": True,
                 "time_grain_sqla": "P1D",
+                "time_range": "Last 30 days",
                 "x_axis": "snapshot_date",
                 "x_axis_time_format": "smart_date",
-                "y_axis_format": USD_PRICE_FORMAT,
+                # `~` trims trailing zeros: BTC reads $64,139.58 and USDT still
+                # reads $0.9989 rather than collapsing to $1.
+                "y_axis_format": "$,.4~f",
             },
         },
     ]
