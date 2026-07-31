@@ -11,9 +11,10 @@ version: 2
 #      change over the last 30 days" is really "over however many of those 30 days exist".
 #   2. Null does not mean zero, and rarely means missing data. A null day-over-day change
 #      means the *previous day* is absent, which is normal and by design (D025).
-#   3. Some days are lower fidelity. Dates repaired from the CoinCap history endpoints have
-#      null vwap_24hr and a wider coin universe (25 vs the usual ~20), because those
-#      endpoints return less than /assets does (D024, incidents I17).
+#   3. Some days are lower fidelity. Dates repaired from the CoinCap history endpoints carry
+#      price and market cap ONLY - volume_usd_24hr, vwap_24hr and change_percent_24hr are
+#      all null, not sparse - and a wider coin universe (25 vs the usual ~20), because those
+#      endpoints return far less than /assets does (D024, incident I17).
 
 models:
   - name: daily_snapshot
@@ -79,8 +80,9 @@ models:
         description: Market capitalisation in USD on the snapshot date.
       - name: volume_usd_24hr
         description: >-
-          Trailing 24-hour trading volume in USD, as reported at fetch time. Sparse on
-          dates repaired from the history endpoints.
+          Trailing 24-hour trading volume in USD, as reported at fetch time. Entirely NULL
+          on dates repaired from the history endpoints - not merely sparse. A repaired day
+          carries price and market cap only (D024, incident I17).
       - name: vwap_24hr
         description: >-
           Volume-weighted average price over the trailing 24 hours. NULL for every date

@@ -3,6 +3,10 @@
 This file defines **how the agent must operate** while working in this repository.
 It is intentionally short and procedural.
 
+This is the single source of truth for how to work here, whichever agent is reading it —
+[`AGENTS.md`](AGENTS.md) exists only to point tools that look for that filename back to this
+file, so rules are written once and never drift between copies.
+
 For *what the project is* and which document is authoritative on what, start at
 [`docs/README.md`](docs/README.md) — the documentation map and evolution story. Read it
 before making design claims about this repo; several docs are deliberately kept as
