@@ -5,8 +5,8 @@
 > constraint (D024), gap-tolerant Gold (D025), cloud capture (D026/D027), and the hardening
 > pass (D029). The Progress Log below was not maintained past 2026-03-15.
 >
-> For what actually happened and why, read [`README.md`](README.md) (the documentation map
-> and evolution story), then [`decisions.md`](decisions.md) and [`incidents.md`](incidents.md).
+> For what actually happened and why, read [`README.md`](../README.md) (the documentation map
+> and evolution story), then [`decisions.md`](../decisions.md) and [`incidents.md`](../incidents.md).
 
 ## How to Read This
 
@@ -25,7 +25,7 @@ Status key: `planned` | `in progress` | `done`
 
 **Deliverables**:
 - `docs/architecture.md` — system design and data flow
-- `docs/milestones.md` — this file
+- `docs/historical/milestones.md` — this file
 - `docs/decisions.md` — technical decision log
 
 **Why first**: Writing things down forces clarity. We align on the plan before writing code,

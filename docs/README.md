@@ -14,7 +14,8 @@ mislead you.
 | How do I run this? | [`../README.md`](../README.md) | Quick start, stack overview, roadmap |
 | How is it built, and why that shape? | [`architecture.md`](architecture.md) | Current design. Authoritative |
 | Why was X decided? | [`decisions.md`](decisions.md) | D001–D030, dated, append-only |
-| What broke, and what did it teach us? | [`incidents.md`](incidents.md) | I1–I18, plus remaining hardening items |
+| What broke, and what did it teach us? | [`incidents.md`](incidents.md) | I1–I19, plus remaining hardening items |
+| How did the project get here? | [`evolution.md`](evolution.md) | The narrative spine, and the draft for a future write-up |
 | How do I operate it / debug a symptom? | [`runbook.md`](runbook.md) | First checks by symptom |
 | How does the daily cloud capture work? | [`autonomous-daily-capture.md`](autonomous-daily-capture.md) | GitHub Actions → S3 |
 | How does Superset serve the data? | [`superset.md`](superset.md) | Serving profile, bootstrap |
@@ -22,9 +23,15 @@ mislead you.
 | What is the AI-agent layer going to be? | [`ai-agent-architecture.md`](ai-agent-architecture.md) | **Design authority** for the next phase |
 | How should an agent work in this repo? | [`../CLAUDE.md`](../CLAUDE.md) | Operating rules — branching, scope, questions |
 
-**Historical, not current** — kept for the reasoning, banner-marked at the top of each:
-[`milestones.md`](milestones.md), [`m1-setup.md`](m1-setup.md),
-[`m2-bronze.md`](m2-bronze.md), [`m3-silver.md`](m3-silver.md).
+**Historical, not current** — everything under [`historical/`](historical/) describes the
+system as it *was*, kept for the reasoning rather than the facts:
+[`milestones.md`](historical/milestones.md), [`m1-setup.md`](historical/m1-setup.md),
+[`m2-bronze.md`](historical/m2-bronze.md), [`m3-silver.md`](historical/m3-silver.md).
+
+The folder is the signal. A banner at the top of a file only helps someone who opens it and
+reads from the top — but most encounters with a doc are a grep hit or a file listing, where
+only the path is visible. `docs/historical/m2-bronze.md` carries the warning into every one
+of those. The banners are still there as well.
 
 ### Precedence when two docs disagree
 
@@ -36,10 +43,14 @@ ordering doesn't settle, that's a bug in the docs — fix it rather than guessin
 
 ## How the project evolved
 
-The short version: **this project is a lakehouse whose design was driven almost entirely by
-things going wrong.** Nearly every structural choice is a response to a specific failure.
-Reading `incidents.md` alongside `decisions.md` is the fastest way to understand *why* the
-system looks like it does.
+The short version below is for orientation. The full narrative — with the causation between
+decisions, the Spark-vs-dbt thread, and the beliefs that turned out to be wrong — is in
+[`evolution.md`](evolution.md).
+
+**This project is a lakehouse whose design was driven almost entirely by things going
+wrong.** Nearly every structural choice is a response to a specific failure. Reading
+`incidents.md` alongside `decisions.md` is the fastest way to understand *why* the system
+looks like it does.
 
 ### Phase 1 — Build the layers (2026-02 → 2026-04)
 

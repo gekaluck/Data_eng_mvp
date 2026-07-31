@@ -21,7 +21,8 @@ and configuration only. Design authority is [`docs/ai-agent-architecture.md`](do
 | `config/`    | Trino catalog/service config                                 |
 | `tests/`     | pytest suite (DAG integrity, schemas, transforms)           |
 | `scripts/`   | PowerShell helpers to run the stack                          |
-| `docs/`      | Architecture, decisions, runbook, milestones                |
+| `docs/`      | Current docs — start at `docs/README.md`                      |
+| `docs/historical/` | Superseded docs, kept for the reasoning. Never authoritative |
 | `ai_agent/`  | AI-agent layer skeleton (Phase A, not yet implemented)      |
 
 ## Branching & commits
@@ -33,10 +34,17 @@ and configuration only. Design authority is [`docs/ai-agent-architecture.md`](do
 
 ## Documentation after action
 
-After a milestone, update the relevant docs — especially
-[`docs/architecture.md`](docs/architecture.md) and [`docs/decisions.md`](docs/decisions.md).
+The full rules — which document to update and what triggers each — live in
+[`CLAUDE.md`](CLAUDE.md), because that is the file every agent session loads automatically.
+In short: [`architecture.md`](docs/architecture.md) when the shape changes,
+[`decisions.md`](docs/decisions.md) when a choice was made,
+[`incidents.md`](docs/incidents.md) when something broke, and
+[`evolution.md`](docs/evolution.md) for the narrative.
+
 The decision log is **append-only**: record reversals as a new superseding entry
-(e.g., `D023 supersedes D020`) rather than rewriting history.
+(e.g., `D023 supersedes D020`) rather than rewriting history. Never reuse a D or I number —
+check the highest existing one first, since parallel PRs have collided before (see the note
+on D030).
 
 ## Secrets
 

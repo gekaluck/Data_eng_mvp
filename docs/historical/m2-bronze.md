@@ -10,7 +10,7 @@
 >   objects for 07-19 and 07-22..07-28 were overwritten with wrong-day prices (I10, I17,
 >   D028). For that window, Silver is the more trustworthy record.
 >
-> Current behaviour: [`architecture.md`](architecture.md) · [`runbook.md`](runbook.md).
+> Current behaviour: [`architecture.md`](../architecture.md) · [`runbook.md`](../runbook.md).
 
 ## What Was Built
 

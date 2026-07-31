@@ -659,16 +659,14 @@ object-key layout, so its output is byte-compatible with what the Bronze DAG wri
 snapshot to land somewhere the local stack can read without a sync step.
 ---
 
-## D030 — Superset Serves Canonical dbt Gold Through Read-Only Trino (was a second D027)
+## D030 — Superset serves canonical dbt Gold through read-only Trino
 
 **Date**: 2026-07-18
 **Status**: Accepted
-
-**Numbering note**: originally filed as a second **D027**, in parallel with the
-cloud-capture D027 below — two PRs in flight picked the same next number. Renumbered to
-D030 on 2026-07-30. The cloud-capture entry kept D027 because far more of the repo already
-referenced it. Left in date order here rather than moved to the end, so the decision log
-still reads chronologically.
+**Note**: Filed as a second `D027` by mistake — two PRs in flight picked the same next
+number — and renumbered on 2026-07-31. Nothing referenced it under the old number; every
+`D027` elsewhere in the repo means the cloud-capture decision below, which is why that one
+kept the number. Left here in date order so the log still reads chronologically.
 
 **Decision**:
 - Add Apache Superset as an optional local `serving` Compose profile.
@@ -884,3 +882,51 @@ missing was any statement of what *should* be true across components.
 - **Assert coverage in Python rather than dbt tests**: Rejected — the assertions are about
   data, the house style for data assertions is a singular dbt test that returns offending
   rows, and returning the rows makes a failure self-diagnosing.
+
+---
+
+## D031 — The Serving Dashboard Separates "What the Data Says" from "Whether to Believe It"
+**Date**: 2026-07-31
+**Status**: accepted
+
+**Decision**: The Superset dashboard becomes two tabs on one dashboard — **Market** and
+**Pipeline Health** — with three supporting rules:
+
+1. **Observability KPIs are recent and denominated.** The all-time "missing days" count is
+   retired in favour of days since the last snapshot, coverage over the last 30 completed
+   days, and the current unbroken streak. All three are scoped to *completed* days, because
+   the calendar spine includes today, which is legitimately empty until the 01:30 UTC
+   capture lands.
+2. **Coverage is shown on a time axis, not as a proportion.** A per-day status strip and a
+   100%-stacked monthly mix replace the all-time pie, which could only say how many days
+   were missing, never which ones or whether the trend was improving.
+3. **Availability reports field completeness alongside row counts**, as information rather
+   than as a status input. `volume_coverage_pct` and `vwap_coverage_pct` are new columns on
+   `data_availability_daily`; `availability_status` is deliberately unchanged.
+
+**Why**:
+- The single page mixed two readers. Market charts had no filters at all, and the
+  observability charts reported all-time totals that could never improve no matter how well
+  the pipeline ran — a metric that cannot move is not an instrument.
+- Row-count availability overstates trust. 77 of 107 `available` days carry no volume or
+  VWAP at all (28% field coverage overall), because backfilled days structurally lack those
+  fields. `weekly_roll_avg_volume` is null on most of the history, and nothing said so.
+- Field completeness was left out of `availability_status` on purpose: folding it in would
+  turn ~72% of history `partial` and destroy the meaning of the status that was just
+  repaired in I19. Row-count availability answers "did the pipeline run"; field coverage
+  answers "how rich is the day". They are different questions and get different columns.
+
+**Consequences**:
+- `data_availability_daily` reads `volume_usd_24hr` and `vwap_24hr` from Silver, so it now
+  depends on those columns existing.
+- Native filters (date range, symbol, market-cap rank) are scoped: the KPI tiles are
+  excluded from the time filter, since "days since last snapshot" is a statement about now
+  and windowing it would make it lie.
+
+**Alternatives considered**:
+- **Two separate dashboards**: cleaner separation, but two URLs and two filter sets to keep
+  in sync for one reader.
+- **A calendar heatmap** for coverage: the natural visual, but it is a legacy plugin whose
+  availability varies by Superset build. A daily stacked bar on a time axis reads almost the
+  same and uses a viz type this stack certainly supports.
+- **Folding field coverage into `availability_status`**: rejected above.

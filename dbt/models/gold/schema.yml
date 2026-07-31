@@ -53,7 +53,7 @@ models:
         description: >-
           Rank by market cap within this snapshot date, 1 = largest. Computed from the
           day's own data, not carried over from the CoinCap payload's own rank field
-          (which is deliberately not persisted - see docs/m3-silver.md).
+          (which is deliberately not persisted - see docs/historical/m3-silver.md).
       - name: price_usd
         description: Price in USD at fetch time on the snapshot date.
         tests:
@@ -95,9 +95,10 @@ models:
 
       IMPORTANT: the lookbacks require the *exact* calendar date - `snapshot_date - 14`
       and `snapshot_date - 30` - to exist in the data. There is no nearest-available
-      fallback. Because coverage is sparse, all four delta columns are null on many dates,
-      and that means "the comparison date is missing", never "the rank did not move".
-      Do not read a null delta as stability.
+      fallback. Because coverage is sparse this bites hard: as of 2026-07-31, 32% of rows
+      have a null 14-day delta and 55% have a null 30-day delta. Those nulls mean "the
+      comparison date is missing", never "the rank did not move". Do not read a null delta
+      as stability, and do not compute a coverage-blind average over these columns.
     tests:
       - unique:
           column_name: "concat(cast(snapshot_date as varchar), '::', coin_id)"
@@ -218,6 +219,19 @@ models:
           - not_null
       - name: silver_row_count
         description: Silver price-snapshot rows present for the date. 0 means the date is genuinely absent.
+        tests:
+          - not_null
+      - name: volume_row_count
+        description: >-
+          Silver rows for the date carrying a non-null 24h volume. Below silver_row_count
+          means the date is present but thinner than it looks - the fidelity signal for
+          history-repaired days (D024).
+        tests:
+          - not_null
+      - name: vwap_row_count
+        description: >-
+          Silver rows for the date carrying a non-null 24h VWAP. Zero on every
+          history-repaired date, because those endpoints do not return VWAP at all.
         tests:
           - not_null
       - name: daily_snapshot_row_count

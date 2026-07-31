@@ -7,7 +7,7 @@
 > endpoints, so some rows have null `vwap_24hr` / `change_percent_24hr` by construction
 > (D024, I17).
 >
-> Current behaviour: [`architecture.md`](architecture.md) · [`runbook.md`](runbook.md).
+> Current behaviour: [`architecture.md`](../architecture.md) · [`runbook.md`](../runbook.md).
 
 ## What Was Built
 

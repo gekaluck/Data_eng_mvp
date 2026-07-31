@@ -202,11 +202,13 @@ Inside Airflow the same build and tests run as the two downstream dbt DAGs. See
 
 - [architecture.md](docs/architecture.md) — system overview and layer design
 - [decisions.md](docs/decisions.md) — technical decision log
+- [README.md](docs/README.md) — **start here**: which doc is authoritative for what
+- [evolution.md](docs/evolution.md) — how the project got its shape, told as a story
 - [runbook.md](docs/runbook.md) — operating procedures and debugging by symptom
 - [incidents.md](docs/incidents.md) — what has actually broken, root causes, and fixes
 - [table_browser.md](docs/table_browser.md) — exploring tables via Trino / Jupyter / dbt
 - [superset.md](docs/superset.md) — serving-layer setup, dashboard assets, and availability semantics
-- [milestones.md](docs/milestones.md) — how the project was built up, milestone by milestone
+- [historical/milestones.md](docs/historical/milestones.md) — how the project was built up, milestone by milestone
 - [ai-agent-architecture.md](docs/ai-agent-architecture.md) — design for the upcoming AI-agent layer
 - [dbt/README.md](dbt/README.md) — dbt-specific setup and usage
 

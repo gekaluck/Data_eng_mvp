@@ -32,6 +32,25 @@ tables are declared as sources under the `silver` catalog.
 `data_availability_daily` generates a complete date spine and classifies each date
 as `available`, `partial`, or `missing`; see `docs/superset.md`.
 
+## Rebuilding the incremental models across all history
+
+Omit `snapshot_date` and the incremental models read every Silver date, so a
+full-refresh rebuilds them from scratch:
+
+```bash
+dbt run --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg --full-refresh
+```
+
+Then rebuild the two table models that read them:
+
+```bash
+dbt run --project-dir dbt --profiles-dir dbt --select data_availability_daily latest_market_snapshot
+```
+
+This is safe to repeat — everything is derived from Silver and no source data is
+touched. It is also how I19 was repaired: `mc_rank_change` and `wkly_roll_avg` had
+never been rebuilt and held 9 dates against `daily_snapshot`'s 107.
+
 ## dbt docs
 
 Generate docs metadata and the catalog:

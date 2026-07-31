@@ -39,6 +39,7 @@ Status key: `fixed` | `mitigated` | `open` | `accepted`
 | I16 | 2026-07-29 | dbt and Spark Gold disagree at gap boundaries | fixed (stored data rebuilt) |
 | I17 | 2026-07-19 | A second duplicated-fetch pair, outside the I10 window | fixed (repaired from history) |
 | I18 | 2026-07-30 | One coin without history aborts the whole backfill, mid-spend | fixed |
+| I19 | 2026-04 → 07-30 | Two Gold serving models held 9 dates while `daily_snapshot` held 107 | fixed (backfilled, test added) |
 
 ---
 
@@ -424,6 +425,47 @@ the repo where each attempt costs money.
 
 ---
 
+## I19 — Two Gold serving models were never backfilled, and one of them could not be
+**Date**: 2026-07-31 · **Status**: fixed
+
+**Symptom**: The Superset availability dashboard showed 98 days `partial` and only 9
+`available` — 46% of the calendar `missing`, the rest almost entirely `partial`. It looked
+like a reporting artifact left over from the flat-day repairs.
+
+**Root cause**: It was not an artifact. `daily_snapshot` covered all 107 Silver dates, but
+`mc_rank_change` and `weekly_roll_avg` held **9** — only the dates a daily run had touched.
+Both are incremental models that had never been rebuilt across history, and
+`data_availability_daily` compares row counts across all three, so it correctly reported
+every one of the other 98 days as short.
+
+`mc_rank_change` could not simply be backfilled, either. Its 14- and 30-day lookback CTEs
+were filtered by date *only* when the `snapshot_date` variable was set; without it they
+selected every date and joined on `coin_id` alone, so a full-refresh would have crossed
+every date with every other date. The model was structurally single-date, and the only way
+that stayed invisible is that it was only ever run one date at a time.
+
+**Fix**: The lookback joins now match on `coin_id` **and** the offset date, which is correct
+for both a single-date run and a full history rebuild. Both models were then rebuilt with
+`--full-refresh`: each went from 9 dates to 107 (2,175 rows, matching `daily_snapshot`), and
+all 98 `partial` days flipped to `available`.
+
+A new dbt test, `gold_serving_models_agree_per_date`, fails when the three dbt serving
+models disagree on per-date row counts.
+
+**Lesson**: This is I9's lesson one layer over. D029 asserted that `daily_snapshot` covers
+Silver and that the two Gold *implementations* agree — but nothing asserted anything about
+the other two serving models, so they drifted for months while every test stayed green. The
+availability table did report it, in a colour, on a dashboard. A report nobody has to
+acknowledge is not an assertion; the same fact only became actionable once a test failed on
+it. Coverage assertions have to name every model that serves, not just the flagship one.
+
+**Related**: The same investigation showed that 77 of the 107 now-`available` days carry no
+`volume_usd_24hr` or `vwap_24hr` at all (28% field coverage overall) — a known consequence
+of backfilled days lacking those fields, but one the dashboard never surfaced. Now reported
+as `volume_coverage_pct` / `vwap_coverage_pct` rather than folded into the status (D031).
+
+---
+
 ## Open hardening items
 
 Tracked here so they don't get lost.
@@ -451,6 +493,7 @@ split it rather than growing the branch.
 |----|------|-----------|------------------|
 | H1 | Paused-DAG check + `execution_timeout` on every trigger task | I9 | The orchestrator task fails within seconds, naming the paused DAG |
 | H2 | Coverage and cross-implementation dbt tests | I9, I12, I13 | A missing date or a stale null fails the dbt test DAG the same day |
+| H6 | Per-date row-count agreement across the three dbt serving models | I19 | A serving model that stops being built fails the dbt test DAG the same day |
 | H3 | Capture-freshness assertion in the sync | I1 | A bucket that stopped receiving files fails instead of skipping |
 | H4 | dbt Gold reconciled with Spark Gold (data rebuilt) | I16, I3 | `gold_implementations_agree_per_date` fails on any divergence |
 
