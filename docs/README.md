@@ -13,7 +13,7 @@ mislead you.
 |----------|-----|-------|
 | How do I run this? | [`../README.md`](../README.md) | Quick start, stack overview, roadmap |
 | How is it built, and why that shape? | [`architecture.md`](architecture.md) | Current design. Authoritative |
-| Why was X decided? | [`decisions.md`](decisions.md) | D001–D030, dated, append-only |
+| Why was X decided? | [`decisions.md`](decisions.md) | Dated, append-only. Read the newest entry on a topic; earlier ones may be superseded |
 | What broke, and what did it teach us? | [`incidents.md`](incidents.md) | I1–I19, plus remaining hardening items |
 | How did the project get here? | [`evolution.md`](evolution.md) | The narrative spine, and the draft for a future write-up |
 | How do I operate it / debug a symptom? | [`runbook.md`](runbook.md) | First checks by symptom |

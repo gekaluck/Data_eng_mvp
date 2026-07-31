@@ -59,6 +59,8 @@ dbt/.user.yml
 .vscode/
 .idea/
 *.swp
+# Scratch SQL scratchpads the editor drops in the repo root.
+*.session.sql
 
 # --- OS ---------------------------------------------------------------------
 .DS_Store
