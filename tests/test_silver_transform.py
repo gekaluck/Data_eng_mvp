@@ -62,9 +62,17 @@ def bronze_rows():
 
 @pytest.fixture(autouse=True)
 def reset_tables(spark):
-    spark.sql(f"DROP TABLE IF EXISTS {CATALOG_NAME}.crypto.price_snapshots")
-    spark.sql(f"DROP TABLE IF EXISTS {CATALOG_NAME}.crypto.coins")
-    spark.sql(f"DROP NAMESPACE IF EXISTS {CATALOG_NAME}.crypto")
+    # `ensure_tables` creates four tables, so dropping only two left the namespace
+    # non-empty and the namespace drop failed for any test running after one that
+    # had written Silver. The namespace itself is created idempotently, so leaving
+    # it in place is enough isolation.
+    for table in (
+        "price_snapshots",
+        "coins",
+        "asset_market_cap_history",
+        "total_market_cap_history",
+    ):
+        spark.sql(f"DROP TABLE IF EXISTS {CATALOG_NAME}.crypto.{table}")
     yield
 
 
@@ -123,3 +131,26 @@ def test_transform_writes_both_silver_tables(spark, bronze_rows, tmp_path):
     assert "rank" not in coins["bitcoin"]
     assert snapshots["bitcoin"]["snapshot_date"] == TARGET_DATE
     assert snapshots["ethereum"]["price_usd"] == pytest.approx(3400.5)
+
+
+def test_transform_reads_a_bronze_object_with_provenance_columns(spark, bronze_rows, tmp_path):
+    """H5 added fetch-provenance columns to Bronze; Silver must not care.
+
+    Built through the real writer rather than a hand-made DataFrame, so this fails
+    if the Bronze schema and Silver's reader ever drift apart.
+    """
+    from utils.bronze_snapshot import build_snapshot_parquet
+
+    raw_json = {
+        "timestamp": 1_753_660_200_000,
+        "data": [dict(row, explorer=None) for row in bronze_rows],
+    }
+    bronze_path = tmp_path / "bronze_with_provenance.parquet"
+    bronze_path.write_bytes(build_snapshot_parquet(raw_json))
+
+    transform(spark, TARGET_DATE, bronze_path=str(bronze_path), catalog_name=CATALOG_NAME)
+    validate_silver_result(spark, TARGET_DATE, catalog_name=CATALOG_NAME)
+
+    snapshots = spark.table(f"{CATALOG_NAME}.crypto.price_snapshots")
+    assert "fetched_at_utc" not in snapshots.columns
+    assert snapshots.count() == len(bronze_rows)
