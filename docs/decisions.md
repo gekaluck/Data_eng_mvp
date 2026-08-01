@@ -983,3 +983,62 @@ property of the dataset rather than a defect awaiting repair.
 
 **Revisit if**: The agent eval demonstrably needs a contiguous multi-month window, or the
 project acquires a purpose that depends on continuous history.
+
+---
+
+## D033 — Bronze Records Its Own Provenance (closes H5, hardens D028)
+**Date**: 2026-07-31
+**Status**: accepted
+
+**Decision**: Every Bronze `/assets` snapshot now carries two columns describing where it
+came from — `api_timestamp_ms` (CoinCap's own response timestamp, validated all along and
+previously discarded) and `fetched_at_utc` (our wall clock at fetch time) — written by a
+single shared builder, `dags/utils/bronze_snapshot.build_snapshot_parquet`, that both
+writers call. Nothing downstream consumes them: Silver selects its columns by name and is
+unchanged. Detection lives in an operator script, `scripts/audit_bronze_provenance.py`.
+
+**Why**:
+
+- **The defect was real but undetectable.** I10 and I17 are the same failure — a live
+  `/assets` response stored under a past date's label — and both were found by noticing that
+  two dates shared a price to the last decimal, not by any check. Bronze recorded nothing
+  about *when* an object was fetched, so the evidence had to be reconstructed from S3
+  `LastModified` metadata, which any copy or re-upload destroys. A fetch timestamp inside
+  the object survives the copy that the capture sync performs (D027).
+- **A per-row column, not file metadata.** Both values are constant across a snapshot's rows,
+  which argues for Parquet key-value metadata. A repeated column costs almost nothing after
+  compression, is visible to every reader including Trino and Spark without special handling,
+  and survives a rewrite that a metadata key would not.
+- **One builder, not two.** The premise of D026/D027 is that the cloud capture and the local
+  DAG produce interchangeable objects, and until now that was maintained by two code paths
+  being kept similar by hand. Extracting the builder makes the compatibility structural: the
+  schema is declared once, explicitly, and a change to it cannot land in only one writer.
+- **Detection stays out of the daily path.** 37 of Bronze's dates predate this change and
+  carry no provenance at all, so a test asserting "every date is auditable" would fail
+  permanently on history that cannot be fixed. The audit script reports coverage honestly —
+  how many dates it *could* check — and only fails on what it can prove.
+
+**Consequences**:
+- Bronze objects written from now on are one column-pair wider. Silver ignores them; the
+  Silver reader has a test (`test_transform_reads_a_bronze_object_with_provenance_columns`)
+  that builds its input through the real writer, so the two cannot drift apart unnoticed.
+- The audit can only ever cover dates written after this change. The 37 existing ones stay
+  unauditable, and I10/I17 remain historically inferred rather than confirmed.
+- `scripts/` is now bind-mounted read-only into the Airflow containers so the audit can run
+  where MinIO is reachable.
+- A future Silver column carrying `fetched_at_utc` forward would let a dbt test assert
+  freshness in SQL. Deliberately not done now: it is an Iceberg schema change on a table
+  Gold reads, and it would be null for every existing row.
+
+**Alternatives considered**:
+- **Parquet file-level key-value metadata**: cheaper, but invisible to SQL readers and easy
+  to lose on any rewrite.
+- **Trusting S3 `LastModified`**: already available and already proved insufficient — the
+  sync copies objects, which resets it. It was usable for I17 only because those objects had
+  never been copied.
+- **A dbt/Airflow test failing on stale provenance every day**: rejected for now. With 37
+  unauditable dates it would either fail permanently or need a hardcoded cutoff date, and
+  the signature it looks for (I10) is already prevented structurally by D027.
+
+**Revisit if**: The provenance columns reach Silver, or the audit finds a real instance —
+either would justify promoting it from a script into the daily test path.

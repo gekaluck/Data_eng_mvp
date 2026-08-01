@@ -190,8 +190,14 @@ The gold layer optimizes for the reader, not the writer.
 ### Bronze
 - **Format**: Parquet (Snappy compression)
 - **Storage**: MinIO (`s3://bronze/crypto/assets/year=YYYY/month=MM/day=DD/assets.parquet`)
-- **Schema enforcement**: Pydantic validation at ingestion time
+- **Schema enforcement**: Pydantic validation at ingestion time, then an explicit PyArrow
+  schema declared once in `dags/utils/bronze_snapshot.py` and shared by both writers
 - **Modeling**: none; bronze preserves source shape exactly
+- **Provenance**: every snapshot also carries `api_timestamp_ms` (CoinCap's response
+  timestamp) and `fetched_at_utc` (our wall clock at fetch time), so a mislabelled object is
+  detectable instead of inferred from a price coincidence (D033). Snake_case marks the two
+  columns we add; every other column is CoinCap's own camelCase name. Audit with
+  `scripts/audit_bronze_provenance.py`; dates written before 2026-07-31 have neither column
 - **Purpose**: landing zone and source for reprocessing
 - **Caveat**: not actually immutable. The local fetch DAG uploads with `replace=True` and
   names objects from `logical_date`, so a late run overwrote a past date with live prices.

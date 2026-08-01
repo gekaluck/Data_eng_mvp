@@ -238,8 +238,12 @@ time, so a delayed or retried run still writes *today's* object with today's dat
 only copies dates Bronze lacks, and `overwrite` is opt-in.
 
 **Lesson**: "Raw landing zone" and "mutable in place" are incompatible. And because Bronze
-stores no fetch timestamp, this was inferred from a price coincidence rather than detected —
-see hardening item **H5**.
+stored no fetch timestamp, this was inferred from a price coincidence rather than detected.
+
+**Hardened (H5)**: snapshots now carry `api_timestamp_ms` and `fetched_at_utc`, so an object
+fetched long after the date it is labelled with is directly visible to
+`scripts/audit_bronze_provenance.py` (D033). The objects from this incident predate the
+columns and remain unauditable.
 
 ---
 
@@ -404,6 +408,10 @@ signature — two adjacent dates sharing a price to the last decimal — was nev
 the whole history, so a second instance sat four days outside the boundary. When you find
 a data defect, search for its signature everywhere before writing down its extent.
 
+**Hardened (H5)**: the S3 `LastModified` evidence this incident turned on is destroyed by
+any copy, and the sync copies every object. The fetch time now lives *inside* the snapshot
+(D033), so it survives the trip from the capture bucket into Bronze.
+
 ---
 
 ## I18 — One coin without history aborts the whole backfill, mid-spend
@@ -472,26 +480,9 @@ as `volume_coverage_pct` / `vwap_coverage_pct` rather than folded into the statu
 
 ---
 
-## Open hardening items
+## Hardening items
 
-Tracked here so they don't get lost.
-
-| ID | Item | Addresses | Status |
-|----|------|-----------|--------|
-| H5 | Record the fetch timestamp in Bronze so mislabeling is detectable | I6, I10, I17 | open — own branch |
-
-**H5 in full**, since it is the last one standing. `CoinCapAssetsResponse.timestamp` is
-already validated and then thrown away — only `validated.data` is written, so Bronze keeps
-no record of *when* a snapshot was actually fetched. That is why I10 and I17 had to be
-inferred from a price coincidence instead of detected: the one field that would have made
-them obvious was parsed and discarded.
-
-Persist it, plus the wall-clock fetch time, as columns in **both** writers —
-`dags/bronze_coincap.py` and `scripts/capture_daily_snapshot.py`. They must stay
-byte-compatible with each other; that compatibility is the premise of the whole sync design
-(D026/D027), which copies objects between buckets without re-validating them. This changes
-the Bronze schema, so it touches Silver's reader too. If it ripples further than expected,
-split it rather than growing the branch.
+None open. H1–H6 have all landed.
 
 ### Landed
 
@@ -502,7 +493,13 @@ split it rather than growing the branch.
 | H6 | Per-date row-count agreement across the three dbt serving models | I19 | A serving model that stops being built fails the dbt test DAG the same day |
 | H3 | Capture-freshness assertion in the sync | I1 | A bucket that stopped receiving files fails instead of skipping |
 | H4 | dbt Gold reconciled with Spark Gold (data rebuilt) | I16, I3 | `gold_implementations_agree_per_date` fails on any divergence |
+| H5 | Fetch provenance recorded in Bronze | I6, I10, I17 | `scripts/audit_bronze_provenance.py` names any date whose fetch time doesn't fit its label |
 
-H5 stays open deliberately: it changes the Bronze schema and touches Silver's reader, so
-it belongs on its own branch rather than growing this one. It is the item that would have
-made I10 and I17 *detectable* rather than inferred from a price coincidence.
+**On H5's limits**, because they are the interesting part. Every snapshot now carries
+`api_timestamp_ms` and `fetched_at_utc`, written by one builder both writers share, so the
+next mislabelled object is evidence rather than inference (D033). But it makes the *next*
+instance detectable, not the past ones: the 37 dates already in Bronze have no provenance
+columns and never will, so the audit reports them as unauditable rather than clean, and
+I10/I17 stay historically inferred. The defect it detects is already prevented structurally
+by D027 — the cloud capture takes its date from the wall clock at fetch time — so this is
+the evidence layer behind that guarantee, not the guarantee itself.
