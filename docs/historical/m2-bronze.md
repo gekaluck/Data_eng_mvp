@@ -1,5 +1,17 @@
 # M2 — Bronze Layer Setup & Reference
 
+> **Historical record — 2026-03.** This describes Bronze as it was first built, and is kept
+> for the reasoning, not as a description of today's system. Two things have since changed:
+>
+> - **`bronze_coincap_assets` is no longer daily or scheduled.** The single daily CoinCap
+>   call moved to GitHub Actions in D026/D027; this DAG survives for manual one-off pulls
+>   and spends a credit when run. The daily path is capture → sync → Bronze.
+> - **Bronze is not an immutable landing zone.** It was written with `replace=True`, and
+>   objects for 07-19 and 07-22..07-28 were overwritten with wrong-day prices (I10, I17,
+>   D028). For that window, Silver is the more trustworthy record.
+>
+> Current behaviour: [`architecture.md`](../architecture.md) · [`runbook.md`](../runbook.md).
+
 ## What Was Built
 
 A daily Airflow DAG (`bronze_coincap_assets`) that:

@@ -58,6 +58,12 @@ capture the *only* scheduled call with local Airflow syncing from the bucket (D0
 reliable thing in the system. Capture and processing have opposite requirements — only the
 cheap, must-not-miss half needed to leave the laptop.
 
+**The gap itself is permanent, by decision** ([D032](decisions.md)). Buying it back would
+cost ~17 months of free quota and would return only price and market cap — 3 of the 5
+measure columns are null on a history-repaired day. Sparse coverage is now a documented
+property of this dataset, not an open defect. Do not propose filling it without a specific
+requirement that needs it.
+
 ---
 
 ## I2 — Credit exhaustion from deep backfill
@@ -468,11 +474,24 @@ as `volume_coverage_pct` / `vwap_coverage_pct` rather than folded into the statu
 
 ## Open hardening items
 
-Tracked here so they don't get lost; see the hardening plan for implementation detail.
+Tracked here so they don't get lost.
 
 | ID | Item | Addresses | Status |
 |----|------|-----------|--------|
 | H5 | Record the fetch timestamp in Bronze so mislabeling is detectable | I6, I10, I17 | open — own branch |
+
+**H5 in full**, since it is the last one standing. `CoinCapAssetsResponse.timestamp` is
+already validated and then thrown away — only `validated.data` is written, so Bronze keeps
+no record of *when* a snapshot was actually fetched. That is why I10 and I17 had to be
+inferred from a price coincidence instead of detected: the one field that would have made
+them obvious was parsed and discarded.
+
+Persist it, plus the wall-clock fetch time, as columns in **both** writers —
+`dags/bronze_coincap.py` and `scripts/capture_daily_snapshot.py`. They must stay
+byte-compatible with each other; that compatibility is the premise of the whole sync design
+(D026/D027), which copies objects between buckets without re-validating them. This changes
+the Bronze schema, so it touches Silver's reader too. If it ripples further than expected,
+split it rather than growing the branch.
 
 ### Landed
 

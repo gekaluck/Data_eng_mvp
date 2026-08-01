@@ -9,7 +9,7 @@ conventions favor clarity over ceremony.
 The existing Bronze/Silver/Gold pipeline is **stable and off-limits** to the new work.
 When building the [`ai_agent/`](ai_agent) module, do **not** change DAGs, PySpark
 transforms, or dbt models. The agent layer extends the platform through read-only access
-and configuration only. Design authority is [`docs/new_ARCHITECTURE.md`](docs/new_ARCHITECTURE.md).
+and configuration only. Design authority is [`docs/ai-agent-architecture.md`](docs/ai-agent-architecture.md).
 
 ## Where things live
 
@@ -21,7 +21,8 @@ and configuration only. Design authority is [`docs/new_ARCHITECTURE.md`](docs/ne
 | `config/`    | Trino catalog/service config                                 |
 | `tests/`     | pytest suite (DAG integrity, schemas, transforms)           |
 | `scripts/`   | PowerShell helpers to run the stack                          |
-| `docs/`      | Architecture, decisions, runbook, milestones                |
+| `docs/`      | Current docs — start at `docs/README.md`                      |
+| `docs/historical/` | Superseded docs, kept for the reasoning. Never authoritative |
 | `ai_agent/`  | AI-agent layer skeleton (Phase A, not yet implemented)      |
 
 ## Branching & commits
@@ -33,10 +34,17 @@ and configuration only. Design authority is [`docs/new_ARCHITECTURE.md`](docs/ne
 
 ## Documentation after action
 
-After a milestone, update the relevant docs — especially
-[`docs/architecture.md`](docs/architecture.md) and [`docs/decisions.md`](docs/decisions.md).
+The full rules — which document to update and what triggers each — live in
+[`CLAUDE.md`](CLAUDE.md), because that is the file every agent session loads automatically.
+In short: [`architecture.md`](docs/architecture.md) when the shape changes,
+[`decisions.md`](docs/decisions.md) when a choice was made,
+[`incidents.md`](docs/incidents.md) when something broke, and
+[`evolution.md`](docs/evolution.md) for the narrative.
+
 The decision log is **append-only**: record reversals as a new superseding entry
-(e.g., `D023 supersedes D020`) rather than rewriting history.
+(e.g., `D023 supersedes D020`) rather than rewriting history. Never reuse a D or I number —
+check the highest existing one first, since parallel PRs have collided before (see the note
+on D030).
 
 ## Secrets
 

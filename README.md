@@ -13,7 +13,7 @@ Gold implementations (Spark and dbt) kept side by side for comparison.
 
 > **What's next:** an AI-agent layer (MCP server + text-to-analytics agent over the Gold
 > layer) is designed and about to be built as a new module. See the
-> [Roadmap](#roadmap) and [`docs/new_ARCHITECTURE.md`](docs/new_ARCHITECTURE.md).
+> [Roadmap](#roadmap) and [`docs/ai-agent-architecture.md`](docs/ai-agent-architecture.md).
 
 ---
 
@@ -202,12 +202,14 @@ Inside Airflow the same build and tests run as the two downstream dbt DAGs. See
 
 - [architecture.md](docs/architecture.md) — system overview and layer design
 - [decisions.md](docs/decisions.md) — technical decision log
+- [README.md](docs/README.md) — **start here**: which doc is authoritative for what
+- [evolution.md](docs/evolution.md) — how the project got its shape, told as a story
 - [runbook.md](docs/runbook.md) — operating procedures and debugging by symptom
 - [incidents.md](docs/incidents.md) — what has actually broken, root causes, and fixes
 - [table_browser.md](docs/table_browser.md) — exploring tables via Trino / Jupyter / dbt
 - [superset.md](docs/superset.md) — serving-layer setup, dashboard assets, and availability semantics
-- [milestones.md](docs/milestones.md) — how the project was built up, milestone by milestone
-- [new_ARCHITECTURE.md](docs/new_ARCHITECTURE.md) — design for the upcoming AI-agent layer
+- [historical/milestones.md](docs/historical/milestones.md) — how the project was built up, milestone by milestone
+- [ai-agent-architecture.md](docs/ai-agent-architecture.md) — design for the upcoming AI-agent layer
 - [dbt/README.md](dbt/README.md) — dbt-specific setup and usage
 
 ---
@@ -215,7 +217,7 @@ Inside Airflow the same build and tests run as the two downstream dbt DAGs. See
 ## Roadmap
 
 The platform above is stable. The next track adds an **AI-agent layer** on top of the
-Gold layer, designed in [`docs/new_ARCHITECTURE.md`](docs/new_ARCHITECTURE.md) (the source
+Gold layer, designed in [`docs/ai-agent-architecture.md`](docs/ai-agent-architecture.md) (the source
 of truth for that work). It extends the platform without modifying any existing pipeline:
 
 - **Phase A — MCP server + text-to-analytics agent.** A transport-agnostic MCP server

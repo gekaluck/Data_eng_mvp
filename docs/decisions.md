@@ -663,9 +663,10 @@ snapshot to land somewhere the local stack can read without a sync step.
 
 **Date**: 2026-07-18
 **Status**: Accepted
-**Note**: Filed as a second `D027` by mistake; renumbered on 2026-07-31. Nothing referenced
-it under the old number — every `D027` elsewhere in the repo means the cloud-capture
-decision below.
+**Note**: Filed as a second `D027` by mistake — two PRs in flight picked the same next
+number — and renumbered on 2026-07-31. Nothing referenced it under the old number; every
+`D027` elsewhere in the repo means the cloud-capture decision below, which is why that one
+kept the number. Left here in date order so the log still reads chronologically.
 
 **Decision**:
 - Add Apache Superset as an optional local `serving` Compose profile.
@@ -929,3 +930,56 @@ missing was any statement of what *should* be true across components.
   availability varies by Superset build. A daily stacked bar on a time axis reads almost the
   same and uses a viz type this stack certainly supports.
 - **Folding field coverage into `availability_status`**: rejected above.
+
+---
+
+## D032 — The Coverage Gap Stays; We Do Not Buy History Back
+**Date**: 2026-07-31
+**Status**: accepted
+
+**Decision**: Leave the two coverage gaps — 87 days (2026-04-08 → 07-03) and 4 days
+(2026-03-15 → 03-18) — permanently unfilled. Do not spend CoinCap credits, and do not add a
+second price source, to make the series contiguous. Treat sparse coverage as a documented
+property of the dataset rather than a defect awaiting repair.
+
+**Why**:
+
+- **Cost.** At D024's measured rate of ~100 credits per day of data against a 500/month free
+  tier, 87 days is ~8,700 credits — roughly 17 months of quota. This is not a free-tier
+  operation, and it is not worth a paid tier for a learning project.
+- **The filled data would be mostly empty.** Measured on the two days actually repaired this
+  way (I17): a history-backfilled date carries `price_usd` and `market_cap_usd` and nothing
+  else. `volume_usd_24hr`, `vwap_24hr` and `change_percent_24hr` are all **entirely null** —
+  0 of 25 rows, not sparse. Backfilling would place an 87-day block in the middle of the
+  series where 3 of 5 measure columns are absent, so every volume or VWAP analysis would
+  acquire a large hole positioned exactly over the newest, most expensive data.
+- **The sparseness is the test bed.** The AI-agent layer (`ai-agent-architecture.md`, R3) is
+  built around a confidence gate that refuses rather than guesses. Sparse coverage with
+  honest nulls — 32% of 14-day deltas and 55% of 30-day deltas are null — is precisely the
+  condition that gate exists to handle. A dense series would remove the most valuable thing
+  to evaluate it against.
+- **The gap is also the better story.** It records something true: a side project's coverage
+  is a record of the author's attention. The architecture had no opinion about that until it
+  was too late, which is the point of I1 and of D026/D027.
+
+**Consequences**:
+- Any question spanning 2026-04 → 07 returns a partial answer, and consumers must handle
+  that. `data_availability_daily` is the table that makes it visible; the Gold `schema.yml`
+  descriptions state it for every affected column.
+- Rolling and lookback metrics stay null across the gap boundary by design (D025). This is
+  not a bug to be reported again.
+- If a future need genuinely requires dense history, revisit with a *specific* requirement
+  (an eval set, a named analysis) rather than filling it speculatively.
+
+**Alternatives considered**:
+- **Backfill the 4-day March gap only** (~400 credits): rejected. Tidiness, not value —
+  nothing queries that far back, and the filled days would still be missing 3 of 5 columns.
+- **Backfill from a free exchange API** (Binance/Kraken public OHLCV): technically viable and
+  unmetered, but the prices are one exchange's rather than CoinCap's cross-exchange
+  aggregate, and the coin universe differs. That is a provenance change requiring its own
+  column and its own decision, not a quiet fill.
+- **Pay for a CoinCap tier**: rejected for a learning project whose stated goal is the
+  infrastructure, not research-grade data.
+
+**Revisit if**: The agent eval demonstrably needs a contiguous multi-month window, or the
+project acquires a purpose that depends on continuous history.

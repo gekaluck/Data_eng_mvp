@@ -1,5 +1,10 @@
 # M1 — Local Infrastructure Setup
 
+> **Historical record — 2026-03.** The setup steps here are still broadly correct, but the
+> stack has grown since: Trino, Superset and dbt were added later, and `scripts/stack.ps1`
+> is now the usual way to bring things up. Treat [`README.md`](../../README.md) and
+> [`architecture.md`](../architecture.md) as authoritative for the current stack.
+
 ## Prerequisites
 
 - Docker Desktop (with Docker Compose v2)

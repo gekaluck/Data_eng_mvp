@@ -5,4 +5,4 @@ scores on **execution accuracy** over a hand-written NL→SQL→result golden se
 the five pins on every report: model ID, prompt version, allow-list hash, golden-set
 version, profile. Includes unanswerable cases to test the refusal gate.
 
-No implementation yet. Eval design: [`../../docs/new_ARCHITECTURE.md`](../../docs/new_ARCHITECTURE.md) §6.
+No implementation yet. Eval design: [`../../docs/ai-agent-architecture.md`](../../docs/ai-agent-architecture.md) §6.
