@@ -26,9 +26,9 @@ jobs:
         run: pip install ruff
       - name: Lint for errors (syntax + undefined names)
         # Error-class rules only — this is a correctness gate, not a style gate.
-        run: ruff check --select E9,F63,F7,F82 dags spark superset tests
+        run: ruff check --select E9,F63,F7,F82 dags spark superset tests scripts
       - name: Compile all modules
-        run: python -m compileall dags spark superset tests
+        run: python -m compileall dags spark superset tests scripts
 
   dbt:
     name: dbt parse

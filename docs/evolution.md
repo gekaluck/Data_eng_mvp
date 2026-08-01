@@ -273,8 +273,11 @@ the data for weeks.
 ## Where it stands (2026-07-31)
 
 107 distinct dates over ~198 calendar days, all three serving models in step, both Gold
-implementations agreeing on every date, and no fabricated flat days left. One hardening item
-is still open (**H5**, recording the fetch timestamp in Bronze — the thing that would have
-made I10 and I17 *detectable* instead of inferred from a price coincidence).
+implementations agreeing on every date, and no fabricated flat days left. Hardening is
+finished: H5 closed with D033, so every new Bronze snapshot records when it was fetched —
+the thing that would have made I10 and I17 *detectable* instead of inferred from a price
+coincidence. It arrives, as usual here, after the incidents rather than before them, and it
+can only ever cover the dates written from now on.
 
-The next act is the AI-agent layer: [`ai-agent-architecture.md`](ai-agent-architecture.md).
+The next act is the AI-agent layer: [`ai-agent-architecture.md`](ai-agent-architecture.md),
+with the platform prerequisites listed in [`pre-ai-readiness.md`](pre-ai-readiness.md).

@@ -983,3 +983,114 @@ property of the dataset rather than a defect awaiting repair.
 
 **Revisit if**: The agent eval demonstrably needs a contiguous multi-month window, or the
 project acquires a purpose that depends on continuous history.
+
+---
+
+## D033 — Bronze Records Its Own Provenance (closes H5, hardens D028)
+**Date**: 2026-07-31
+**Status**: accepted
+
+**Decision**: Every Bronze `/assets` snapshot now carries two columns describing where it
+came from — `api_timestamp_ms` (CoinCap's own response timestamp, validated all along and
+previously discarded) and `fetched_at_utc` (our wall clock at fetch time) — written by a
+single shared builder, `dags/utils/bronze_snapshot.build_snapshot_parquet`, that both
+writers call. Nothing downstream consumes them: Silver selects its columns by name and is
+unchanged. Detection lives in an operator script, `scripts/audit_bronze_provenance.py`.
+
+**Why**:
+
+- **The defect was real but undetectable.** I10 and I17 are the same failure — a live
+  `/assets` response stored under a past date's label — and both were found by noticing that
+  two dates shared a price to the last decimal, not by any check. Bronze recorded nothing
+  about *when* an object was fetched, so the evidence had to be reconstructed from S3
+  `LastModified` metadata, which any copy or re-upload destroys. A fetch timestamp inside
+  the object survives the copy that the capture sync performs (D027).
+- **A per-row column, not file metadata.** Both values are constant across a snapshot's rows,
+  which argues for Parquet key-value metadata. A repeated column costs almost nothing after
+  compression, is visible to every reader including Trino and Spark without special handling,
+  and survives a rewrite that a metadata key would not.
+- **One builder, not two.** The premise of D026/D027 is that the cloud capture and the local
+  DAG produce interchangeable objects, and until now that was maintained by two code paths
+  being kept similar by hand. Extracting the builder makes the compatibility structural: the
+  schema is declared once, explicitly, and a change to it cannot land in only one writer.
+- **Detection stays out of the daily path.** 37 of Bronze's dates predate this change and
+  carry no provenance at all, so a test asserting "every date is auditable" would fail
+  permanently on history that cannot be fixed. The audit script reports coverage honestly —
+  how many dates it *could* check — and only fails on what it can prove.
+
+**Consequences**:
+- Bronze objects written from now on are one column-pair wider. Silver ignores them; the
+  Silver reader has a test (`test_transform_reads_a_bronze_object_with_provenance_columns`)
+  that builds its input through the real writer, so the two cannot drift apart unnoticed.
+- The audit can only ever cover dates written after this change. The 37 existing ones stay
+  unauditable, and I10/I17 remain historically inferred rather than confirmed.
+- `scripts/` is now bind-mounted read-only into the Airflow containers so the audit can run
+  where MinIO is reachable.
+- A future Silver column carrying `fetched_at_utc` forward would let a dbt test assert
+  freshness in SQL. Deliberately not done now: it is an Iceberg schema change on a table
+  Gold reads, and it would be null for every existing row.
+
+**Alternatives considered**:
+- **Parquet file-level key-value metadata**: cheaper, but invisible to SQL readers and easy
+  to lose on any rewrite.
+- **Trusting S3 `LastModified`**: already available and already proved insufficient — the
+  sync copies objects, which resets it. It was usable for I17 only because those objects had
+  never been copied.
+- **A dbt/Airflow test failing on stale provenance every day**: rejected for now. With 37
+  unauditable dates it would either fail permanently or need a hardcoded cutoff date, and
+  the signature it looks for (I10) is already prevented structurally by D027.
+
+**Revisit if**: The provenance columns reach Silver, or the audit finds a real instance —
+either would justify promoting it from a script into the daily test path.
+
+---
+
+## D034 — The Orchestrator Runs at 05:30 UTC (refines D027, supersedes its schedule)
+**Date**: 2026-07-31
+**Status**: accepted
+
+**Decision**: Move `coincap_regular_orchestrator` from `30 1 * * *` to `30 5 * * *`, five
+hours after the capture cron rather than one. State both crons together in the DAG file and
+assert the gap in a test rather than leaving the coupling implicit in two comments.
+
+**Why**:
+
+- **The old buffer was sized to a number that changed.** D027 chose an hour against a
+  documented drift of "5–30 minutes". Measured on 2026-07-30 and 07-31, the 00:30 UTC
+  capture completed at 03:40 and 03:59 UTC. The orchestrator was running before the capture
+  it was meant to follow, so every layer sat a day behind with nothing failing (I20).
+- **Five hours, not more.** The constraint at the other end is the UTC day boundary: the
+  capture resolves its partition date from the wall clock at fetch time (D027), so a sync
+  after 23:59 UTC would be reaching for a label that no longer means "today". Five hours
+  covers observed drift with margin and leaves most of the day spare.
+- **Lateness is one-directional.** GitHub's scheduler runs late, never early, so headroom
+  only ever needs to grow in one direction — which is exactly why an hour felt safe and
+  wasn't.
+- **The coupling belongs in code.** Both crons now sit in the orchestrator DAG as named
+  constants, and `test_orchestrator_runs_well_after_the_capture_cron` fails below a
+  four-hour gap. The pairing has now broken twice (I14, I20) while each schedule was
+  defensible in isolation; a comment in two files was not enough.
+
+**Consequences**:
+- Fresh data lands in Gold ~4 hours later in the day than before. Nothing consumes it on a
+  tighter clock than "sometime today".
+- A drift beyond five hours reintroduces the one-day lag. It stays *safe* — H3's freshness
+  check tolerates two days, and the next run catches up — but the test's four-hour floor is
+  a tripwire on the assumption, not a guarantee about GitHub.
+- If the capture cron moves, the orchestrator must move with it; the test now enforces that
+  rather than trusting the reader.
+
+**Alternatives considered**:
+- **Have the capture workflow trigger the sync directly** (dispatch a webhook, or write a
+  sentinel object the sync waits on): removes the guessed offset entirely and is the
+  structurally correct answer. Rejected for now because it needs an inbound path to a
+  laptop-hosted Airflow, which the whole D026/D027 split exists to avoid. Revisit if the
+  local stack ever gains a stable public endpoint.
+- **Run the orchestrator twice a day**: would mask drift rather than fix it, and doubles
+  Spark work on a laptop for no new data.
+- **Poll for the day's object with a sensor before syncing**: the sync already skips
+  harmlessly when there is nothing new; a sensor would convert a cheap skip into a task
+  holding a worker slot for hours.
+
+**Revisit if**: Observed drift approaches five hours, or the capture gains a way to signal
+completion.

@@ -6,25 +6,22 @@ would add XCom overhead with no real benefit.
 Flow:
   1. GET /assets?limit=20 from the configured CoinCap API base URL
   2. Validate response with Pydantic
-  3. Convert to Parquet (Snappy compression)
+  3. Convert to Parquet (Snappy compression), stamped with when it was fetched
   4. Upload to MinIO: bronze/crypto/assets/year=YYYY/month=MM/day=DD/assets.parquet
 
 Uses logical_date for deterministic partitioning (idempotent reruns).
 """
 
-import io
 import logging
 import os
 
-import pyarrow as pa
-import pyarrow.parquet as pq
 import requests
 from airflow.decorators import dag, task
 from airflow.models.param import Param
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from pendulum import datetime, duration
 
-from schemas.coincap import CoinCapAssetsResponse
+from utils.bronze_snapshot import build_snapshot_parquet
 from utils.coincap_api import format_coincap_request_error
 from utils.run_dates import bronze_assets_key, resolve_target_date
 
@@ -93,16 +90,9 @@ def bronze_coincap_assets():
         except requests.exceptions.RequestException as exc:
             raise RuntimeError(format_coincap_request_error(exc, COINCAP_URL)) from exc
 
-        validated = CoinCapAssetsResponse.model_validate(raw_json)
-        logger.info("Validated %d assets", len(validated.data))
-
-        records = [asset.model_dump() for asset in validated.data]
-        table = pa.Table.from_pylist(records)
-
-        buffer = io.BytesIO()
-        pq.write_table(table, buffer, compression="snappy")
-        parquet_bytes = buffer.getvalue()
-        logger.info("Parquet size: %d bytes", len(parquet_bytes))
+        # Shared with the cloud capture so both writers produce the same shape,
+        # including the provenance columns that record when this was fetched (H5).
+        parquet_bytes = build_snapshot_parquet(raw_json)
 
         s3_key = bronze_assets_key(target_date)
         hook = S3Hook(aws_conn_id=S3_CONN_ID)

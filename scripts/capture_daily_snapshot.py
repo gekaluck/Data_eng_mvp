@@ -18,21 +18,18 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import io
 import logging
 import os
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-import pyarrow as pa
-import pyarrow.parquet as pq
 import requests
 
-# Reuse the local pipeline's data contract and key layout so the cloud capture
-# is byte-for-byte compatible with what Bronze writes. `dags/` holds both.
+# Reuse the local pipeline's data contract, Parquet builder, and key layout so the
+# cloud capture stays compatible with what Bronze writes. `dags/` holds all three.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dags"))
-from schemas.coincap import CoinCapAssetsResponse  # noqa: E402
+from utils.bronze_snapshot import build_snapshot_parquet  # noqa: E402
 from utils.coincap_api import format_coincap_request_error  # noqa: E402
 from utils.run_dates import bronze_assets_key  # noqa: E402
 
@@ -84,14 +81,9 @@ def _fetch_snapshot_parquet() -> bytes:
     except requests.exceptions.RequestException as exc:
         raise RuntimeError(format_coincap_request_error(exc, COINCAP_URL)) from exc
 
-    validated = CoinCapAssetsResponse.model_validate(raw_json)
-    logger.info("Validated %d assets", len(validated.data))
-
-    records = [asset.model_dump() for asset in validated.data]
-    table = pa.Table.from_pylist(records)
-    buffer = io.BytesIO()
-    pq.write_table(table, buffer, compression="snappy")
-    return buffer.getvalue()
+    # Same builder the Bronze DAG uses, so the snapshot this uploads can be copied
+    # into Bronze unchanged — including the provenance columns (H5).
+    return build_snapshot_parquet(raw_json)
 
 
 def _check_upload_prerequisites() -> None:

@@ -173,6 +173,23 @@ order:
 A skip is the correct response to "nothing new", so the fault is upstream in the cloud
 capture, not in the local stack.
 
+### Every layer is exactly one day behind, and nothing failed
+
+The orchestrator ran *before* that day's capture landed, so it found nothing and skipped;
+the next day's run picks the snapshot up. Compare the capture workflow's completion time
+with the orchestrator's schedule (05:30 UTC, D034):
+
+```bash
+gh run list --workflow=daily-capture.yml --limit 5
+```
+
+GitHub's scheduled runs are late, never early, and the drift grows over time — it reached
+~3.5h in July 2026 and swallowed the one-hour buffer that used to be enough (I20). If
+completion times are creeping toward 05:30 UTC, move the orchestrator later and update D034;
+`test_orchestrator_runs_well_after_the_capture_cron` enforces a four-hour minimum gap. A
+single catch-up run needs no arguments — the sync copies whatever Bronze lacks and hands the
+range downstream.
+
 ### The orchestrator fails on `check_downstream_dags_ready`
 
 A DAG it is about to trigger is paused or missing. The message names it. Unpause with:
@@ -230,6 +247,18 @@ this fetches exactly the one date. It merges over the duplicated row in place. N
 repaired day is lower fidelity: the history endpoints return no `change_percent_24hr` or
 `vwap_24hr` (D024). Then rebuild Gold for the repaired date **and the day after it**, whose
 change was computed against the bad value.
+
+For dates written after 2026-07-31, check the cause directly rather than inferring it — the
+Bronze provenance audit names the mislabelled date and how late its fetch was:
+
+```bash
+docker compose exec airflow-scheduler python /opt/airflow/scripts/audit_bronze_provenance.py
+```
+
+It reports how many dates it could check at all: objects older than that date carry no
+provenance columns and are counted as unauditable, not as clean (D033). Exit code is 1 when
+anything is flagged. `--max-lag-hours` loosens or tightens how late a fetch may be for its
+partition date (default 36h: the cloud capture runs ~0.5h in, a scheduled local run ~24h).
 
 ### The sync task fails with AccessDenied
 
