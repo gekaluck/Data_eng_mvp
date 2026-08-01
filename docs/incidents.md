@@ -480,6 +480,41 @@ as `volume_coverage_pct` / `vwap_coverage_pct` rather than folded into the statu
 
 ---
 
+## I20 — Cron drift outgrew the buffer, and every layer ran a day behind
+**Date**: 2026-07-30 → 07-31 · **Status**: fixed
+
+**Symptom**: Found while checking whether the platform was ready for the AI-agent layer.
+At 2026-08-01 00:30 UTC, Silver, Spark Gold and dbt Gold all ended at **2026-07-30** — one
+full day stale — even though the cloud capture for 07-31 had succeeded and Bronze had
+nothing missing to complain about. Every DAG run in the window was green.
+
+**Root cause**: The capture cron is 00:30 UTC and the orchestrator ran at 01:30 UTC, an
+hour later by design (D027, the fix for I14). But GitHub's scheduled runs are best-effort
+and only ever late: the capture actually completed at **03:40 UTC** on 07-30 and **03:59
+UTC** on 07-31 — roughly 3.5 hours of drift, well past the one-hour buffer. So the
+orchestrator ran *before* the capture it was meant to follow, found nothing new, skipped,
+and each day's snapshot was picked up by the following day's run.
+
+Nothing failed, and nothing was lost. The capture-freshness check (H3) tolerates a two-day
+lag on purpose, precisely so a single late capture isn't treated as a dead upstream, and a
+sync with nothing to do is *supposed* to skip.
+
+**Fix**: Moved the orchestrator to `30 5 * * *` — five hours of headroom, still inside the
+same UTC day so the sync sees the capture carrying today's date label (D034). Both crons
+are now stated together in the orchestrator DAG, and
+`test_orchestrator_runs_well_after_the_capture_cron` fails if the gap ever drops below four
+hours.
+
+**Lesson**: This is I14 again, with the same shape and a different number — two schedules,
+each defensible alone, coupled by an assumption about a third party's punctuality that
+nothing checked. The first fix chose an hour of headroom against a documented drift of
+"5–30 minutes"; the drift grew, and the fix silently stopped working. A buffer sized to
+observed behaviour is a guess with a decimal point on it. And the consequence was invisible
+by construction: the failure mode of "a day late" is a pipeline that looks perfectly
+healthy, one day at a time.
+
+---
+
 ## Hardening items
 
 None open. H1–H6 have all landed.

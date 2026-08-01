@@ -22,6 +22,20 @@ from utils.downstream_guard import assert_downstream_dags_ready
 SYNC_TASK_ID = "sync_captured_snapshots"
 GUARD_TASK_ID = "check_downstream_dags_ready"
 
+# This schedule is only meaningful *relative to the capture's*, so both are stated here.
+# The capture cron lives in `.github/workflows/daily-capture.yml`; duplicating it makes
+# the coupling visible and lets a test assert the gap is still large enough.
+#
+# GitHub's scheduled runs are best-effort and late, never early. The observed drift on
+# this repo is ~3-3.5h (the 00:30 UTC cron completed at 03:40 and 03:59 UTC on 07-30 and
+# 07-31), which outgrew the one-hour buffer this DAG originally had: the orchestrator
+# ran before the capture it was meant to follow, so every day's snapshot was processed
+# by the *next* day's run and all three layers sat a day behind (I20). 05:30 UTC gives
+# five hours of headroom while staying inside the same UTC day, so the sync still sees
+# the capture that carries today's date label.
+CAPTURE_CRON_UTC = "30 0 * * *"
+ORCHESTRATOR_CRON_UTC = "30 5 * * *"
+
 # Every DAG this orchestrator triggers. The guard task checks all of them up front so
 # a paused Gold DAG fails the run before Silver spends minutes of Spark on work whose
 # results nothing downstream will consume.
@@ -52,11 +66,7 @@ TRIGGER_CONF = {
 @dag(
     dag_id="coincap_regular_orchestrator",
     description="Sync cloud-captured snapshots, then run Silver and Gold over the caught-up range",
-    # 01:30 UTC — an hour after the cloud capture's 00:30 UTC cron, so the day's
-    # snapshot is already in the bucket when we sync. `@daily` (00:00 UTC) would run
-    # *before* the capture and always process the previous day, adding a needless
-    # ~24h lag. The hour of headroom absorbs GitHub's scheduled-run drift.
-    schedule="30 1 * * *",
+    schedule=ORCHESTRATOR_CRON_UTC,
     start_date=datetime(2025, 1, 1),
     catchup=False,
     params={

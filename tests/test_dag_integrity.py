@@ -274,6 +274,29 @@ class TestDagIntegrity:
         """The standalone sync DAG should be present for manual catch-up runs."""
         assert "bronze_capture_sync" in dagbag.dags
 
+    def test_orchestrator_runs_well_after_the_capture_cron(self, dagbag):
+        """The orchestrator must leave room for GitHub's scheduled-run drift.
+
+        This coupling has failed twice. I14: the orchestrator ran at 00:00 UTC, before
+        the 00:30 UTC capture, and processed the previous day forever. I20: drift grew
+        to ~3.5h and swallowed the one-hour buffer that fixed I14, with the same
+        result and nothing failing. Both times the schedules were correct in isolation.
+
+        Four hours is the floor, not the target — the DAG uses five.
+        """
+        from coincap_regular_orchestrator import CAPTURE_CRON_UTC, ORCHESTRATOR_CRON_UTC
+
+        def _minutes(cron: str) -> int:
+            minute, hour = cron.split()[:2]
+            return int(hour) * 60 + int(minute)
+
+        gap_minutes = _minutes(ORCHESTRATOR_CRON_UTC) - _minutes(CAPTURE_CRON_UTC)
+        assert gap_minutes >= 4 * 60, (
+            f"the orchestrator runs {gap_minutes}min after the capture cron; "
+            "GitHub's drift is routinely hours, so the sync would miss the same day's snapshot"
+        )
+        assert dagbag.dags["coincap_regular_orchestrator"].schedule_interval == ORCHESTRATOR_CRON_UTC
+
     def test_range_capable_dags_accept_start_and_end_date(self, dagbag):
         """Every DAG in the catch-up path must accept the range the sync discovers.
 

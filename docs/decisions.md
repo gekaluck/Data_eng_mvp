@@ -1042,3 +1042,55 @@ unchanged. Detection lives in an operator script, `scripts/audit_bronze_provenan
 
 **Revisit if**: The provenance columns reach Silver, or the audit finds a real instance —
 either would justify promoting it from a script into the daily test path.
+
+---
+
+## D034 — The Orchestrator Runs at 05:30 UTC (refines D027, supersedes its schedule)
+**Date**: 2026-07-31
+**Status**: accepted
+
+**Decision**: Move `coincap_regular_orchestrator` from `30 1 * * *` to `30 5 * * *`, five
+hours after the capture cron rather than one. State both crons together in the DAG file and
+assert the gap in a test rather than leaving the coupling implicit in two comments.
+
+**Why**:
+
+- **The old buffer was sized to a number that changed.** D027 chose an hour against a
+  documented drift of "5–30 minutes". Measured on 2026-07-30 and 07-31, the 00:30 UTC
+  capture completed at 03:40 and 03:59 UTC. The orchestrator was running before the capture
+  it was meant to follow, so every layer sat a day behind with nothing failing (I20).
+- **Five hours, not more.** The constraint at the other end is the UTC day boundary: the
+  capture resolves its partition date from the wall clock at fetch time (D027), so a sync
+  after 23:59 UTC would be reaching for a label that no longer means "today". Five hours
+  covers observed drift with margin and leaves most of the day spare.
+- **Lateness is one-directional.** GitHub's scheduler runs late, never early, so headroom
+  only ever needs to grow in one direction — which is exactly why an hour felt safe and
+  wasn't.
+- **The coupling belongs in code.** Both crons now sit in the orchestrator DAG as named
+  constants, and `test_orchestrator_runs_well_after_the_capture_cron` fails below a
+  four-hour gap. The pairing has now broken twice (I14, I20) while each schedule was
+  defensible in isolation; a comment in two files was not enough.
+
+**Consequences**:
+- Fresh data lands in Gold ~4 hours later in the day than before. Nothing consumes it on a
+  tighter clock than "sometime today".
+- A drift beyond five hours reintroduces the one-day lag. It stays *safe* — H3's freshness
+  check tolerates two days, and the next run catches up — but the test's four-hour floor is
+  a tripwire on the assumption, not a guarantee about GitHub.
+- If the capture cron moves, the orchestrator must move with it; the test now enforces that
+  rather than trusting the reader.
+
+**Alternatives considered**:
+- **Have the capture workflow trigger the sync directly** (dispatch a webhook, or write a
+  sentinel object the sync waits on): removes the guessed offset entirely and is the
+  structurally correct answer. Rejected for now because it needs an inbound path to a
+  laptop-hosted Airflow, which the whole D026/D027 split exists to avoid. Revisit if the
+  local stack ever gains a stable public endpoint.
+- **Run the orchestrator twice a day**: would mask drift rather than fix it, and doubles
+  Spark work on a laptop for no new data.
+- **Poll for the day's object with a sensor before syncing**: the sync already skips
+  harmlessly when there is nothing new; a sensor would convert a cheap skip into a task
+  holding a worker slot for hours.
+
+**Revisit if**: Observed drift approaches five hours, or the capture gains a way to signal
+completion.

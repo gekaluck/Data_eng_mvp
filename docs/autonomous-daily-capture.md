@@ -68,10 +68,14 @@ local sync.
 ### Operational notes
 
 - The two schedules are deliberately paired: capture at **00:30 UTC**, orchestrator at
-  **01:30 UTC**. The hour of headroom means each local run processes the same day's
-  snapshot instead of trailing it by one. Move one and you must move the other.
-- GitHub's scheduled runs are best-effort and often drift 5–30 min past 00:30 UTC. The
-  partition date is resolved inside the script, so drift is harmless.
+  **05:30 UTC** (D034). The headroom means each local run processes the same day's snapshot
+  instead of trailing it by one. Move one and you must move the other — a test now enforces
+  a minimum four-hour gap, because this pairing has broken twice (I14, I20).
+- GitHub's scheduled runs are best-effort and **late, never early**. Early drift on this
+  repo was 5–30 min; measured on 2026-07-30 and 07-31 the 00:30 UTC cron completed at 03:40
+  and 03:59 UTC. Drift doesn't corrupt anything — the partition date is resolved inside the
+  script — but it silently pushed the whole pipeline a day behind when it outgrew the
+  orchestrator's buffer (I20).
 - GitHub **disables scheduled workflows after 60 days of repo inactivity** (it emails
   first). A quiet stretch on the repo silently stops capture — the thing this design
   exists to prevent.

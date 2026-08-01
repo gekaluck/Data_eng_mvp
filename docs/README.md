@@ -111,10 +111,11 @@ which is why Gold's column-level descriptions in `dbt/models/gold/schema.yml` ma
 than they look: they are the semantic layer an agent reasons over.
 
 Hardening is finished: H5 landed with D033, so Bronze now records when each snapshot was
-fetched and the open-items table in [`incidents.md`](incidents.md) is empty. What remains
-before agent code starts is configuration and two decisions, listed in
-[`pre-ai-readiness.md`](pre-ai-readiness.md) — most notably that the pipeline is currently a
-day behind, because GitHub's cron drift outgrew the orchestrator's one-hour buffer.
+fetched and the open-items table in [`incidents.md`](incidents.md) is empty. The same pass
+found the pipeline running a day behind — GitHub's cron drift had outgrown the
+orchestrator's one-hour buffer (I20) — and moved it to 05:30 UTC (D034). What remains before
+agent code starts is Trino and dbt configuration plus a few decisions, listed in
+[`pre-ai-readiness.md`](pre-ai-readiness.md).
 
 ---
 

@@ -173,6 +173,23 @@ order:
 A skip is the correct response to "nothing new", so the fault is upstream in the cloud
 capture, not in the local stack.
 
+### Every layer is exactly one day behind, and nothing failed
+
+The orchestrator ran *before* that day's capture landed, so it found nothing and skipped;
+the next day's run picks the snapshot up. Compare the capture workflow's completion time
+with the orchestrator's schedule (05:30 UTC, D034):
+
+```bash
+gh run list --workflow=daily-capture.yml --limit 5
+```
+
+GitHub's scheduled runs are late, never early, and the drift grows over time — it reached
+~3.5h in July 2026 and swallowed the one-hour buffer that used to be enough (I20). If
+completion times are creeping toward 05:30 UTC, move the orchestrator later and update D034;
+`test_orchestrator_runs_well_after_the_capture_cron` enforces a four-hour minimum gap. A
+single catch-up run needs no arguments — the sync copies whatever Bronze lacks and hands the
+range downstream.
+
 ### The orchestrator fails on `check_downstream_dags_ready`
 
 A DAG it is about to trigger is paused or missing. The message names it. Unpause with:

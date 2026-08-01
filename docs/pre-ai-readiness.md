@@ -52,26 +52,14 @@ Each of these is small, and each maps to a control the design already specifies.
 
 ---
 
-## C. Operational issue to settle first
+## C. Operational
 
-5. **The pipeline is running a day behind, structurally.**
-
-   As of 2026-08-01 00:30 UTC, Silver, Spark Gold and dbt Gold all end at **2026-07-30**
-   (107 distinct dates), and Bronze's newest object is 07-30 — while the cloud capture for
-   07-31 succeeded.
-
-   The cause is drift, not failure. GitHub's scheduled runs are consistently ~3 hours late:
-   the 00:30 UTC capture cron actually completed at **03:40 UTC** on 07-30 and **03:59 UTC**
-   on 07-31. The orchestrator runs at 01:30 UTC (D027, chosen after I14 as "an hour after the
-   capture"), so it now runs *before* the capture it was meant to follow, and each day's
-   snapshot is picked up by the following day's run.
-
-   No data is lost, and H3's freshness check correctly tolerates it — but every "latest" or
-   "today" answer is a day stale, which is exactly the kind of thing an agent will state
-   confidently. Either move the orchestrator to ~05:30 UTC (a revision to D027/I14), or have
-   the capture workflow trigger the sync instead of guessing an offset. **This needs your
-   call before the agent starts answering freshness questions**; the runbook's freshness
-   caveats depend on it.
+5. ~~**The pipeline is running a day behind, structurally.**~~ **Fixed** — the orchestrator
+   moved from 01:30 to 05:30 UTC (D034, incident I20). GitHub's cron drift had grown to
+   ~3.5h, so the orchestrator ran before the capture it was meant to follow and every layer
+   trailed by a day with nothing failing. The first run on the new schedule should land two
+   dates at once (07-31 and 08-01) and bring all three layers current; worth confirming
+   before any agent answers a "latest price" question.
 
 6. **Pin the eval dataset.** The golden set (§6) scores execution accuracy against expected
    results, but the tables it queries gain a row set every day, so any aggregate expectation
@@ -106,9 +94,8 @@ Each of these is small, and each maps to a control the design already specifies.
 
 ## Suggested order
 
-B4 (allow-list) → C5 (schedule fix) → B1/B2 (Trino user + resource group) → B3 (artifacts)
-→ D7/D8 (deps + CI) → then Phase A code, with C6 and D9/D10 handled inside the eval and
-tool work respectively.
+B4 (allow-list) → B1/B2 (Trino user + resource group) → B3 (artifacts) → D7/D8 (deps + CI)
+→ then Phase A code, with C6 and D9/D10 handled inside the eval and tool work respectively.
 
 B1–B3 are configuration and can be done in one small PR before any agent code exists, which
 also means the MCP server's first commit can be written against a platform that already
