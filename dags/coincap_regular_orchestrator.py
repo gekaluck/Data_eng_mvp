@@ -23,8 +23,10 @@ SYNC_TASK_ID = "sync_captured_snapshots"
 GUARD_TASK_ID = "check_downstream_dags_ready"
 
 # This schedule is only meaningful *relative to the capture's*, so both are stated here.
-# The capture cron lives in `.github/workflows/daily-capture.yml`; duplicating it makes
-# the coupling visible and lets a test assert the gap is still large enough.
+# `.github/workflows/daily-capture.yml` owns the capture cron — GitHub reads that file and
+# nothing reads the mirror below. `test_orchestrator_mirrors_the_real_capture_cron` parses
+# the workflow and fails if the two disagree, so moving the real cron cannot leave this
+# comment quietly wrong; the gap assertion measures against the workflow's value.
 #
 # GitHub's scheduled runs are best-effort and late, never early. The observed drift on
 # this repo is ~3-3.5h (the 00:30 UTC cron completed at 03:40 and 03:59 UTC on 07-30 and

@@ -1,8 +1,55 @@
 ﻿"""DAG integrity tests - verify DAGs load without import errors."""
 
+import re
+from pathlib import Path
+
 import pytest
 from airflow.models import DagBag
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+
+# The capture workflow, from either the repo root (host) or the container's mount.
+CAPTURE_WORKFLOW_CANDIDATES = (
+    Path(__file__).resolve().parent.parent / ".github" / "workflows" / "daily-capture.yml",
+    Path("/opt/airflow/.github/workflows/daily-capture.yml"),
+)
+_CRON_RE = re.compile(r"""^\s*-\s*cron:\s*["']([^"']+)["']""", re.MULTILINE)
+
+
+def _capture_cron_from_workflow(candidates=CAPTURE_WORKFLOW_CANDIDATES) -> str:
+    """Read the capture's schedule from the file GitHub actually obeys.
+
+    Deliberately fails rather than skips when the workflow can't be found: a test
+    that quietly stops running is how the schedule coupling drifts in the first place.
+    A regex avoids a PyYAML dependency for one line of a file we control.
+    """
+    for path in candidates:
+        if path.is_file():
+            crons = _CRON_RE.findall(path.read_text(encoding="utf-8"))
+            assert len(crons) == 1, f"expected exactly one cron in {path}, found {crons}"
+            return crons[0].strip()
+
+    raise AssertionError(
+        "Could not read .github/workflows/daily-capture.yml from "
+        + " or ".join(str(p) for p in candidates)
+        + ". In Docker it comes from the read-only .github mount in docker-compose.yml."
+    )
+
+
+def _write_workflow(directory: Path, cron: str) -> Path:
+    path = directory / "daily-capture.yml"
+    path.write_text(f'on:\n  schedule:\n    - cron: "{cron}"\n', encoding="utf-8")
+    return path
+
+
+def test_capture_cron_parser_reads_the_schedule(tmp_path):
+    """The schedule assertions are only worth anything if this really parses the file."""
+    assert _capture_cron_from_workflow([_write_workflow(tmp_path, "15 3 * * *")]) == "15 3 * * *"
+
+
+def test_capture_cron_parser_fails_when_the_workflow_is_missing(tmp_path):
+    """A missing workflow must fail loudly rather than skip the coupling checks."""
+    with pytest.raises(AssertionError, match="Could not read"):
+        _capture_cron_from_workflow([tmp_path / "nope.yml"])
 
 
 @pytest.fixture(scope="module")
@@ -274,6 +321,22 @@ class TestDagIntegrity:
         """The standalone sync DAG should be present for manual catch-up runs."""
         assert "bronze_capture_sync" in dagbag.dags
 
+    def test_orchestrator_mirrors_the_real_capture_cron(self):
+        """The DAG's copy of the capture cron must match the workflow that owns it.
+
+        The workflow file is the authoritative schedule — GitHub reads it, nothing
+        reads the DAG's constant. Without this check the gap test below would compare
+        two values from the same file and keep passing after someone moved the real
+        capture, which is exactly how I20 happened.
+        """
+        from coincap_regular_orchestrator import CAPTURE_CRON_UTC
+
+        assert _capture_cron_from_workflow() == CAPTURE_CRON_UTC, (
+            "CAPTURE_CRON_UTC in dags/coincap_regular_orchestrator.py no longer matches "
+            ".github/workflows/daily-capture.yml. Update it, and re-check the orchestrator's "
+            "own schedule against it (D034)."
+        )
+
     def test_orchestrator_runs_well_after_the_capture_cron(self, dagbag):
         """The orchestrator must leave room for GitHub's scheduled-run drift.
 
@@ -282,15 +345,16 @@ class TestDagIntegrity:
         to ~3.5h and swallowed the one-hour buffer that fixed I14, with the same
         result and nothing failing. Both times the schedules were correct in isolation.
 
-        Four hours is the floor, not the target — the DAG uses five.
+        Four hours is the floor, not the target — the DAG uses five. The capture side
+        is read from the workflow file, so moving the real cron fails this test.
         """
-        from coincap_regular_orchestrator import CAPTURE_CRON_UTC, ORCHESTRATOR_CRON_UTC
+        from coincap_regular_orchestrator import ORCHESTRATOR_CRON_UTC
 
         def _minutes(cron: str) -> int:
             minute, hour = cron.split()[:2]
             return int(hour) * 60 + int(minute)
 
-        gap_minutes = _minutes(ORCHESTRATOR_CRON_UTC) - _minutes(CAPTURE_CRON_UTC)
+        gap_minutes = _minutes(ORCHESTRATOR_CRON_UTC) - _minutes(_capture_cron_from_workflow())
         assert gap_minutes >= 4 * 60, (
             f"the orchestrator runs {gap_minutes}min after the capture cron; "
             "GitHub's drift is routinely hours, so the sync would miss the same day's snapshot"
