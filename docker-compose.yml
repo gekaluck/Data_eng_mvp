@@ -64,6 +64,7 @@ x-airflow-common: &airflow-common
     - ./notebooks:/opt/airflow/notebooks
     - ./plugins:/opt/airflow/plugins
     - ./tests:/opt/airflow/tests
+    - ./scripts:/opt/airflow/scripts:ro  # operator scripts (e.g. the Bronze provenance audit)
     - ./dbt:/opt/airflow/dbt
     - ./spark:/opt/airflow/spark         # PySpark jobs (M3+)
     - spark-ivy-cache:/opt/spark-ivy     # Iceberg/S3A JAR cache â€” persists across restarts

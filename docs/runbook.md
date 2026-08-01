@@ -231,6 +231,18 @@ repaired day is lower fidelity: the history endpoints return no `change_percent_
 `vwap_24hr` (D024). Then rebuild Gold for the repaired date **and the day after it**, whose
 change was computed against the bad value.
 
+For dates written after 2026-07-31, check the cause directly rather than inferring it — the
+Bronze provenance audit names the mislabelled date and how late its fetch was:
+
+```bash
+docker compose exec airflow-scheduler python /opt/airflow/scripts/audit_bronze_provenance.py
+```
+
+It reports how many dates it could check at all: objects older than that date carry no
+provenance columns and are counted as unauditable, not as clean (D033). Exit code is 1 when
+anything is flagged. `--max-lag-hours` loosens or tightens how late a fetch may be for its
+partition date (default 36h: the cloud capture runs ~0.5h in, a scheduled local run ~24h).
+
 ### The sync task fails with AccessDenied
 
 The local `capture_s3` connection needs a **read** key with both `s3:GetObject` (on
