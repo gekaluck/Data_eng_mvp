@@ -13,7 +13,13 @@ Implemented now:
 - CTE-aware extraction of fully qualified physical tables
 - exact table allow-list enforcement and structured `PARSE_ERROR`, `NOT_READ_ONLY`, and
   `TABLE_NOT_ALLOWED` failures
+- typed contracts and transport-neutral implementations for `list_tables`,
+  `get_table_schema`, `get_table_snapshots`, `get_lineage`, and `get_model_docs`
+- fail-closed dbt artifact loading, allow-list-filtered docs/lineage, and live Iceberg
+  columns, file statistics, and snapshots through fixed-shape read-only queries
+- live-schema/dbt-doc reconciliation that keeps Iceberg authoritative and emits explicit
+  drift warnings instead of inventing columns or nullability
 
-Not implemented yet: MCP transports/tools, Trino/Iceberg/dbt adapters, row and scan caps,
+Not implemented yet: MCP transports, query/sample/explain execution, row and scan caps,
 budget accounting, or audit logging. Contracts and the full guardrail spec remain in
 [`../../docs/ai-agent-architecture.md`](../../docs/ai-agent-architecture.md) §3–§4.

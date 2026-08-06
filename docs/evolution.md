@@ -270,7 +270,7 @@ the data for weeks.
 
 ---
 
-## Where it stands (2026-07-31)
+## Where it stands (2026-08-06)
 
 107 distinct dates over ~198 calendar days, all three serving models in step, both Gold
 implementations agreeing on every date, and no fabricated flat days left. Hardening is
@@ -287,6 +287,11 @@ the Gold DAG publishes dbt metadata after successful builds. The platform now pr
 boundary the MCP server was designed against. Later the same day, D036 crossed the next
 gate: dependencies moved into an AI-only environment and CI job, and the first executable
 guardrail began rejecting anything except a single, fully qualified, allow-listed Trino
-`SELECT`. The agent still cannot execute a query—the adapters and MCP transport do not
-exist—but the highest-blast-radius boundary now has deterministic tests before it has a
-network surface.
+`SELECT`. D037 then added the five catalog tools without adding a network surface: dbt's
+published manifest/catalog now drive the allow-listed table index, docs, tests, and bounded
+lineage, while the restricted Trino identity reads live Iceberg columns, snapshots, and
+file statistics through fixed query shapes. The first live reconciliation caught two kinds
+of drift immediately—the weekly model's physical alias was wrong in the allow-list, and two
+live coverage columns lacked dbt descriptions—and both were corrected before transport.
+The agent still cannot execute an analytical query, but it can now acquire trustworthy
+planning context once MCP transports expose this core.

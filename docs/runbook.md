@@ -311,6 +311,33 @@ Check:
   `Loaded system access control file`; after a config change, use
   `docker compose up -d --force-recreate trino`
 
+### AI metadata adapter is stale or incomplete
+
+Run the isolated adapter tests first, then the opt-in live smoke check. The smoke uses only
+fixed-shape `DESCRIBE` and Iceberg metadata-table reads as Trino user `agent`; it does not
+query CoinCap or scan Gold business rows.
+
+```powershell
+$repoRoot = (Get-Location).Path
+docker run --rm --mount "type=bind,source=$repoRoot,target=/workspace" `
+  -w /workspace -e AI_TRINO_HOST=host.docker.internal python:3.12-slim `
+  sh -c "pip install -q -r ai_agent/requirements.txt && python -m ai_agent.smoke_metadata"
+```
+
+Expected: all five allow-listed tables appear, each has live column/stat/snapshot metadata,
+and `schema_warnings` is empty. If it fails or warns:
+
+- an allow-listed model missing from the published manifest is a hard failure; compare
+  `config/ai-agent/allowed-tables.json` with dbt's physical `alias`, not its SQL filename
+- regenerate `dbt/artifacts/` with the `publish_dbt_artifacts` task after changing dbt docs;
+  do not substitute scratch files from `dbt/target/`
+- a `Live columns missing dbt descriptions` warning means `schema.yml` is behind Iceberg;
+  an `absent from the live table` warning means the artifact docs are ahead of Iceberg
+- `nullable: null` is expected when Trino does not expose an Iceberg constraint; do not
+  reinterpret it as nullable or non-nullable
+- a retryable `ENGINE_ERROR` points to Trino health/access; a non-retryable one points to an
+  incompatible metadata-table shape and should be checked against the pinned Trino version
+
 ### History backfill succeeded but expected dates are missing
 
 Check:

@@ -1,8 +1,9 @@
 # `ai_agent/` — AI-Agent Layer (Phase A)
 
-> **Status: guardrail foundation.** The first MCP-server core is implemented: strict
-> allow-list loading, Trino SQL parsing, physical-table extraction, and structured
-> fail-closed errors. Transports, adapters, execution caps, and the agent loop remain next.
+> **Status: guardrails plus metadata core.** The transport-neutral MCP-server core now
+> implements strict SQL validation and the five read-only catalog tools backed by published
+> dbt artifacts and live Trino/Iceberg metadata. MCP transports, query execution caps, and
+> the agent loop remain next.
 
 ## Purpose
 
@@ -34,7 +35,7 @@ Mirrors the component boundaries in `ai-agent-architecture.md §2.2`:
 Phases B (RAG over catalog docs) and C (Feast feature-store bridge) are sketches in the
 design doc and remain **out of scope**.
 
-## Test the current foundation
+## Test the current core
 
 Use an isolated Python 3.12 environment rather than the Airflow image:
 
@@ -45,7 +46,9 @@ ruff check --select E9,F63,F7,F82 ai_agent
 ```
 
 The `AI guardrail tests` CI job runs the same dependency install, lint, compile, and pytest
-checks without starting Docker services or contacting Trino or an LLM provider.
+checks with fixture-backed metadata adapters, without starting Docker services or contacting
+Trino or an LLM provider. A separate opt-in, read-only live smoke command is documented in
+the runbook.
 
 ## Building here
 

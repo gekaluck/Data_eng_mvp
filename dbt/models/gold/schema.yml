@@ -252,6 +252,15 @@ models:
         description: silver_row_count as a percentage of expected_asset_count.
       - name: daily_snapshot_coverage_pct
         description: daily_snapshot_row_count as a percentage of expected_asset_count.
+      - name: volume_coverage_pct
+        description: >-
+          Percentage of Silver rows on this date with a non-null 24-hour volume. NULL when
+          the date has no Silver rows, because fidelity cannot be scored without a source
+          observation.
+      - name: vwap_coverage_pct
+        description: >-
+          Percentage of Silver rows on this date with a non-null 24-hour VWAP. NULL when
+          the date has no Silver rows; typically 0 on history-repaired dates (D024).
       - name: availability_status
         description: >-
           `available` (complete), `partial` (some data, below expectation), or `missing`

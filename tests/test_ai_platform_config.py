@@ -1,8 +1,8 @@
 """Static checks for the platform controls required by the AI-agent layer."""
 
 import json
+import re
 from pathlib import Path
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,10 +41,12 @@ def test_agent_can_select_only_from_canonical_dbt_gold():
 
 def test_mcp_allow_list_enumerates_only_current_dbt_gold_models():
     allow_list = _load_json("config/ai-agent/allowed-tables.json")
-    expected_tables = {
-        f"gold.crypto_dbt.{model.stem}"
-        for model in (REPO_ROOT / "dbt/models/gold").glob("*.sql")
-    }
+    expected_tables = set()
+    for model in (REPO_ROOT / "dbt/models/gold").glob("*.sql"):
+        sql = model.read_text(encoding="utf-8")
+        alias = re.search(r"\balias\s*=\s*['\"]([a-z_][a-z0-9_]*)['\"]", sql)
+        physical_name = alias.group(1) if alias else model.stem
+        expected_tables.add(f"gold.crypto_dbt.{physical_name}")
     assert set(allow_list["tables"]) == expected_tables
     assert len(allow_list["tables"]) == len(expected_tables)
 

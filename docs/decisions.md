@@ -1207,3 +1207,69 @@ documented minor releases may contain breaking fixes.
 **Revisit if**: The golden set needs `UNION`/`INTERSECT`, MCP 2 becomes the stable supported
 line, SQLGlot 31 contains a required Trino fix, or a runnable image makes a lock file worth
 maintaining.
+
+---
+
+## D037 — Metadata Truth Is Reconciled Before It Gets a Transport
+**Date**: 2026-08-06
+**Status**: accepted
+
+**Decision**: Implement the five catalog tools as transport-neutral typed Python methods
+before adding MCP stdio or HTTP. `list_tables`, `get_model_docs`, and `get_lineage` load the
+published `dbt/artifacts/manifest.json` plus `catalog.json`, index only models whose physical
+`database.schema.alias` is in the D035 allow-list, and fail closed when an allow-listed
+relation is absent. `get_table_schema` and `get_table_snapshots` use only adapter-owned,
+fixed-shape `DESCRIBE` and Iceberg `$files`/`$snapshots` reads through Trino's restricted
+`agent` identity; callers cannot supply SQL to these paths.
+
+Live Iceberg is authoritative for column shape, current-snapshot row/file statistics, and
+freshness. dbt descriptions annotate live columns and dbt owns model descriptions, declared
+tests, and lineage. A column-set disagreement becomes an explicit warning. Unknown
+nullability, partitioning, sorting, or dbt catalog row counts stay `null`/empty rather than
+being inferred. Query failures use retryable `ENGINE_ERROR`; an incompatible metadata shape
+uses the same stable code but is non-retryable.
+
+**Why**:
+
+- **Truth sources have different jobs.** The manifest captures intent and semantics; only
+  the live table can prove the structure and snapshot the agent will actually query.
+- **Fixed metadata SQL is a smaller trust boundary.** These methods need engine metadata,
+  but they do not need the general SQL validator or an execution budget because the caller
+  chooses only table and bounded depth/limit values, and every table is checked first.
+- **Failing closed makes deployment drift visible.** A stale artifact or misspelled physical
+  relation must not silently shrink the agent's catalog. The first real smoke run proved the
+  value: `wkly_roll_avg` in the allow-list did not match dbt/Trino's `weekly_roll_avg`, and
+  `data_availability_daily` had two undocumented live columns.
+- **Unknown is safer than plausible.** Trino 477's read-only metadata does not always expose
+  Iceberg null constraints or sort expressions. Inventing those fields would turn a
+  metadata limitation into confident misinformation.
+
+**Consequences**:
+
+- All five intended Gold models now reconcile cleanly against live Trino and freshly
+  published dbt artifacts; the weekly allow-list entry uses its physical alias.
+- `get_table_schema` can return nullable fields and empty layout lists. Consumers must treat
+  those as unavailable metadata, not as facts about the table design.
+- dbt catalog `approx_rows` is currently absent, while current-snapshot logical rows and
+  total active-file bytes are available from Iceberg `$files` in the schema result.
+- CI uses synthetic artifact/query-runner fixtures and does not require the lakehouse. The
+  runbook adds a separate explicit live smoke check as the `agent` user.
+- No MCP endpoint, analytical data read, CoinCap request, LLM call, or budget path is added
+  by this decision.
+
+**Alternatives considered**:
+
+- **Implement transport and adapters together**: rejected because parsing/serialization
+  failures would obscure whether the semantic core or the protocol boundary was wrong.
+- **Trust dbt artifacts for schema**: rejected because publication can lag a successful
+  table change and dbt's Trino catalog currently reports no useful row statistics.
+- **Use `SHOW CREATE TABLE` for every layout field**: rejected because the intentionally
+  non-owning `agent` identity cannot run it under the file-based access rules, and granting
+  ownership would violate D035's least-privilege boundary.
+- **Reach into Iceberg metadata JSON in object storage**: rejected because it would put
+  storage credentials and connector-specific parsing into a catalog tool that already has a
+  safe Trino metadata interface.
+
+**Revisit if**: Trino exposes complete nullability/sort expressions to the read-only
+identity, dbt begins emitting reliable row counts, the catalog is large enough to need lazy
+artifact indexes, or a second transport needs a different serialization boundary.
