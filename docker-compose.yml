@@ -270,6 +270,8 @@ services:
       - ./config/trino/jvm.config:/etc/trino/jvm.config:ro
       - ./config/trino/access-control.properties:/etc/trino/access-control.properties:ro
       - ./config/trino/access-rules.json:/etc/trino/access-rules.json:ro
+      - ./config/trino/resource-groups.properties:/etc/trino/resource-groups.properties:ro
+      - ./config/trino/resource-groups.json:/etc/trino/resource-groups.json:ro
       - ./config/trino/catalog:/etc/trino/catalog:ro
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/v1/info"]

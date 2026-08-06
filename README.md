@@ -158,7 +158,8 @@ The normal entrypoint is a single root DAG that fans out to the leaf DAGs:
 - **`coincap_regular_orchestrator`** triggers, in order:
   1. `bronze_coincap_assets`
   2. `silver_coincap_assets`
-  3. `gold_coincap_assets` **and** `gold_dbt_coincap_assets` (in parallel)
+  3. `gold_coincap_assets` **and** `gold_dbt_coincap_assets` (in parallel; the dbt DAG
+     publishes fresh metadata to `dbt/artifacts/` after its models succeed)
   4. `gold_dbt_coincap_tests` (after the dbt Gold build succeeds)
 
 Use it for scheduled daily processing and for manual single-date reruns (set
@@ -177,7 +178,9 @@ dbt run   --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_c
 dbt test  --project-dir dbt --profiles-dir dbt --select daily_snapshot mc_rank_change wkly_roll_avg latest_market_snapshot data_availability_daily --vars '{"snapshot_date": "2026-04-02"}'
 ```
 
-Inside Airflow the same build and tests run as the two downstream dbt DAGs. See
+Inside Airflow the same build and tests run as the two downstream dbt DAGs. A successful
+dbt build also runs `dbt docs generate` and publishes `manifest.json` / `catalog.json` to
+the ignored `dbt/artifacts/` runtime directory for the AI metadata adapter. See
 [`dbt/README.md`](dbt/README.md).
 
 ---

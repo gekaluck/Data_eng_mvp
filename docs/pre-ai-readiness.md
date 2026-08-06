@@ -2,7 +2,7 @@
 
 What the platform still needs before Phase A of the AI-agent layer
 ([`ai-agent-architecture.md`](ai-agent-architecture.md)) starts. That document is the design
-authority; this one is a punch list against the *running system*, checked on 2026-07-31.
+authority; this one is a punch list against the *running system*, checked on 2026-08-06.
 
 The design's own boundary (§2.2) is that the agent layer **extends, never modifies** the
 pipeline, and that the only platform-side additions are configuration. Everything in §B
@@ -15,7 +15,7 @@ below is one of those additions — none of it exists yet.
 | Item | Evidence |
 |------|----------|
 | Hardening complete | H1–H6 all landed; the open-items table in [`incidents.md`](incidents.md) is empty |
-| Test suite green | 121 tests pass in Docker (`make test`), including the previously-failing `test_silver_history_backfill` |
+| Test suite green | 128 tests pass in Docker (`make test`), including the AI platform configuration checks |
 | Gold semantic layer exists | All five dbt Gold models and their columns carry descriptions in `dbt/models/gold/schema.yml` — the source behind `list_tables` / `get_model_docs` |
 | Read-only Trino access has a precedent | `config/trino/access-rules.json` already restricts the `superset` user to `SELECT` on `gold.crypto_dbt` (D030). The agent user is a copy of that block |
 | Bronze provenance | Snapshots record when they were fetched (D033), so the I10/I17 class of defect is detectable rather than inferred |
@@ -29,26 +29,16 @@ depends on Trino's health signal for anything.
 
 ---
 
-## B. Platform configuration the design assumes but that doesn't exist
+## B. Platform configuration — complete (2026-08-06)
 
-Each of these is small, and each maps to a control the design already specifies.
+All four gaps below are now closed by D035:
 
-1. **Read-only `agent` Trino user** — guardrail §4's engine backstop, and F5's mitigation
-   (the AST validator is code, and code has bugs). Nothing exists today except the
-   `superset` user. Add an analogous block in `config/trino/access-rules.json`.
-2. **Trino resource group** — F4's mitigation for runaway scans. `config/trino/config.properties`
-   sets only `query.max-memory=512MB`; there is no `resource-groups.properties`. Without it,
-   the tool-layer caps are the *only* limit.
-3. **dbt artifact publishing** — the MCP server's dbt adapter reads `manifest.json` /
-   `catalog.json`, and F6 assumes "Airflow refreshes artifacts post-run". No DAG runs
-   `dbt docs generate` today; the only artifacts are whatever a local `dbt run` last left in
-   `dbt/target/`, which is untracked. Add a step to the dbt Gold DAG that regenerates them
-   into a known location.
-4. **Decide the allow-list contents.** Recommendation: allow **`gold.crypto_dbt` only**. It
-   is the canonical serving schema (D030), and exposing Spark Gold (`gold.crypto`) as well
-   would let one question have two authoritative answers — a silent-wrongness source (F1)
-   for no benefit. The two implementations should keep meeting in a dbt test, not in the
-   agent's tool surface.
+| Control | Completion evidence |
+|---------|---------------------|
+| Read-only Trino identity | `config/trino/access-rules.json` limits `agent` to `SELECT` on `gold.crypto_dbt` |
+| Resource group | `config/trino/resource-groups.json` gives `agent` a bounded lane and preserves a fallback for existing users |
+| dbt artifacts | `gold_dbt_coincap_assets.publish_dbt_artifacts` writes fresh metadata to `dbt/artifacts/` after a successful build |
+| Explicit allow-list | `config/ai-agent/allowed-tables.json` enumerates the five current dbt Gold relations |
 
 ---
 
@@ -93,6 +83,12 @@ Each of these is small, and each maps to a control the design already specifies.
 ---
 
 ## Suggested order
+
+**Current position (2026-08-06): B1-B4 are complete.** Next approve D7/D8 (isolated AI
+dependencies plus pure-Python guardrail CI), then start the Phase A MCP server. C6 belongs
+in the eval harness, D9 at the provider boundary, and D10 in tool result metadata.
+
+The ordering below is retained as the original plan and completion trail.
 
 B4 (allow-list) → B1/B2 (Trino user + resource group) → B3 (artifacts) → D7/D8 (deps + CI)
 → then Phase A code, with C6 and D9/D10 handled inside the eval and tool work respectively.

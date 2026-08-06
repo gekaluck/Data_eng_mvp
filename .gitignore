@@ -45,6 +45,7 @@ derby.log
 dbt/dbt_packages/
 dbt/logs/
 dbt/target/
+dbt/artifacts/
 dbt/.user.yml
 
 # --- Notebooks --------------------------------------------------------------

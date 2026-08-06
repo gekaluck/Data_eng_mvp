@@ -1094,3 +1094,56 @@ assert the gap in a test rather than leaving the coupling implicit in two commen
 
 **Revisit if**: Observed drift approaches five hours, or the capture gains a way to signal
 completion.
+
+---
+
+## D035 — The Agent Gets an Explicit, Resource-Bounded dbt Gold Boundary
+**Date**: 2026-08-06
+**Status**: accepted
+
+**Decision**: Expose exactly the five current physical relations in `gold.crypto_dbt` to
+the future MCP server through a checked-in table allow-list and a dedicated Trino user.
+The `agent` identity is read-only at the engine, and its queries enter a file-backed
+resource group limited to one running query, two queued queries, 128 MB soft memory, and
+1 GB of physical scans per hour. The dbt Gold DAG publishes `manifest.json` and
+`catalog.json` to `dbt/artifacts/` only after all requested model builds succeed.
+
+**Why**:
+
+- **One analytical truth.** dbt Gold is the canonical serving schema from D030. Exposing
+  Spark Gold as well would give the agent two plausible answers to the same question.
+- **New tables fail closed.** Schema-wide engine access is only the final backstop; the MCP
+  allow-list enumerates relations, so a newly added model is not silently exposed.
+- **Existing workloads keep their lane.** Enabling Trino resource groups without a fallback
+  selector rejects unmatched dbt, Superset, Jupyter, and operator queries. The default
+  group preserves them while only `agent` receives the conservative local limits.
+- **Metadata freshness has a success boundary.** `dbt/target/` is scratch output from
+  whichever command ran last. A downstream Airflow task gives artifacts a stable location
+  and makes failure visible without publishing metadata for a failed model build.
+- **The engine is a backstop, not the whole guardrail.** Trino 477 resource groups provide
+  memory, concurrency, queue, and period scan controls, but not the MCP contract's
+  per-query timeout. That timeout remains tool-layer work rather than being implied here.
+
+**Consequences**:
+- The first MCP server implementation can load `config/ai-agent/allowed-tables.json`, use
+  the `agent` Trino identity, and read annotations from `dbt/artifacts/` without changing
+  the running pipeline again.
+- Adding or renaming a dbt Gold model now requires an explicit allow-list review.
+- A single query can cross the 1 GB threshold before the hourly quota blocks subsequent
+  queries; this control complements, but does not replace, the future bytes-read polling
+  and timeout in the tool layer.
+- The artifact directory is runtime output and remains gitignored.
+
+**Alternatives considered**:
+- **Allow all of `gold.crypto_dbt` in the MCP layer**: simpler, but a future model becomes
+  agent-visible as an accidental side effect of deployment.
+- **Expose Spark Gold too**: rejected because it creates two authoritative answers and no
+  new analytical capability.
+- **No fallback resource group**: rejected because enabling the manager would break every
+  existing Trino identity not selected into the agent group.
+- **Continue reading `dbt/target/`**: rejected because its freshness has no relationship to
+  the successful Airflow Gold run the agent is answering from.
+
+**Revisit if**: Gold outgrows the 1 GB/hour local quota, a second agent workload needs its
+own budget, or the allow-list changes often enough to justify generating a reviewed config
+artifact from dbt metadata.

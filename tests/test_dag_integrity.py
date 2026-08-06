@@ -213,11 +213,14 @@ class TestDagIntegrity:
         """The gold_dbt_coincap_assets DAG should be present."""
         assert "gold_dbt_coincap_assets" in dagbag.dags
 
-    def test_dbt_gold_dag_has_one_task(self, dagbag):
-        """dbt Gold DAG should run the dbt task only."""
+    def test_dbt_gold_dag_builds_then_publishes_artifacts(self, dagbag):
+        """dbt Gold DAG should publish metadata only after the model build succeeds."""
         dag = dagbag.dags["gold_dbt_coincap_assets"]
         task_ids = {t.task_id for t in dag.tasks}
-        assert task_ids == {"run_dbt_gold"}
+        assert task_ids == {"run_dbt_gold", "publish_dbt_artifacts"}
+        assert dag.get_task("run_dbt_gold").downstream_task_ids == {
+            "publish_dbt_artifacts"
+        }
 
     def test_dbt_gold_dag_has_target_date_param(self, dagbag):
         """dbt Gold DAG should expose a manual target_date override."""

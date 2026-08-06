@@ -59,6 +59,11 @@ Generate docs metadata and the catalog:
 dbt docs generate --project-dir dbt --profiles-dir dbt
 ```
 
+The Airflow-managed Gold build generates the same metadata into `dbt/artifacts/` only
+after every requested date builds successfully. That ignored runtime directory is the
+stable input path for the AI metadata adapter; `dbt/target/` remains local dbt scratch
+output.
+
 Serve the docs site locally:
 
 ```bash
@@ -77,7 +82,8 @@ That orchestrator triggers:
 
 1. Bronze
 2. Silver
-3. `gold_coincap_assets` and `gold_dbt_coincap_assets` in parallel
+3. `gold_coincap_assets` and `gold_dbt_coincap_assets` in parallel; the dbt DAG publishes
+   fresh artifacts after its model task succeeds
 4. `gold_dbt_coincap_tests` after the dbt build succeeds
 
 The dbt Gold build DAG and dbt test DAG also support manual runs through the same

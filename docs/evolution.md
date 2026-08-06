@@ -281,3 +281,8 @@ can only ever cover the dates written from now on.
 
 The next act is the AI-agent layer: [`ai-agent-architecture.md`](ai-agent-architecture.md),
 with the platform prerequisites listed in [`pre-ai-readiness.md`](pre-ai-readiness.md).
+The first prerequisite milestone landed on 2026-08-06: the future agent now has a
+read-only, resource-bounded Trino lane over an explicit five-table dbt Gold allow-list, and
+the Gold DAG publishes dbt metadata after successful builds. The platform now presents the
+boundary the MCP server was designed against; dependency approval and guardrail CI are the
+next gate before agent code.

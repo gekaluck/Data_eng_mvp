@@ -44,6 +44,8 @@ lands (D027).
       |
       v
   Spark Gold path + dbt Gold path
+      |                  |
+      |                  +--> dbt artifacts (manifest + catalog, refreshed after each build)
       |
       v
   Gold (Iceberg tables in MinIO, JDBC catalog metadata in Postgres)
@@ -92,12 +94,27 @@ migrated from local Airflow to the cloud.
 - Runs against the local Trino service
 - Builds a second Gold implementation for learning and comparison
 - Runs tests as SQL assertions in the orchestrated regular flow
+- Publishes `manifest.json` and `catalog.json` to `dbt/artifacts/` after every successful
+  Airflow-managed Gold build; a failed build leaves the publish task unrun
 
 ### Query Layer - Trino
 - Single-node Trino runs locally in Docker
 - Reads and writes Iceberg tables through the shared JDBC catalog
 - Serves as the SQL endpoint for dbt and ad hoc exploration
 - Applies a read-only Gold access policy to the Superset identity
+- Applies a separate read-only `agent` identity to `gold.crypto_dbt` only
+- Routes `agent` queries through a local resource group capped at one concurrent query,
+  two queued queries, 128 MB soft memory, and 1 GB of physical scans per hour; all other
+  identities retain the fallback resource group
+
+### AI-Agent Platform Boundary
+- The future MCP server's engine identity is `agent`; Trino is the unbypassable read-only
+  backstop, while richer SQL validation remains the MCP tool layer's responsibility
+- `config/ai-agent/allowed-tables.json` explicitly enumerates the five canonical dbt Gold
+  relations. Adding a dbt model does not expose it automatically
+- Live Iceberg metadata remains authoritative for structure. The published dbt artifacts
+  supply descriptions and lineage and are treated as potentially stale if they disagree
+  with the live catalog
 
 ### Serving Layer - Apache Superset
 - Runs as an optional Docker Compose profile for end-user exploration

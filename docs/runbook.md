@@ -293,6 +293,23 @@ Check:
 - dbt compiled SQL in `dbt/target/compiled`
 - Trino-compatible SQL and Iceberg configs
 - file encoding issues such as UTF-8 BOMs
+- whether `run_dbt_gold` or the downstream `publish_dbt_artifacts` task failed
+- after a successful publish, both `dbt/artifacts/manifest.json` and
+  `dbt/artifacts/catalog.json` exist; rerun the leaf DAG rather than copying files from
+  `dbt/target/`
+
+### AI client gets `Access Denied` from Trino
+
+Check:
+
+- the Trino client user is exactly `agent`
+- the table is one of the fully qualified names in
+  `config/ai-agent/allowed-tables.json`
+- the query targets `gold.crypto_dbt`; Silver, Spark Gold, writes, and newly added dbt
+  tables are denied by design
+- Trino startup logs contain `Loaded resource group configuration manager file` and
+  `Loaded system access control file`; after a config change, use
+  `docker compose up -d --force-recreate trino`
 
 ### History backfill succeeded but expected dates are missing
 

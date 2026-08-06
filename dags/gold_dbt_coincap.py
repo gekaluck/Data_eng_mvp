@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 REQUIRED_ENVVARS = ["DBT_TRINO_HOST", "DBT_TRINO_PORT", "DBT_TRINO_USER"]
 DBT_PROJECT_DIR = "/opt/airflow/dbt"
+DBT_ARTIFACTS_DIR = f"{DBT_PROJECT_DIR}/artifacts"
 DBT_SELECT_MODELS = [
     "daily_snapshot",
     "mc_rank_change",
@@ -140,7 +141,49 @@ def gold_dbt_coincap_assets():
                 f"date(s): {', '.join(failures)}. See dbt output above for details."
             )
 
-    run_dbt_gold()
+    @task()
+    def publish_dbt_artifacts():
+        """Publish fresh manifest and catalog files for the AI metadata adapter."""
+        validate_envvars(os.environ)
+        cmd = [
+            "dbt",
+            "docs",
+            "generate",
+            "--project-dir",
+            DBT_PROJECT_DIR,
+            "--profiles-dir",
+            DBT_PROJECT_DIR,
+            "--target-path",
+            DBT_ARTIFACTS_DIR,
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                env=os.environ.copy(),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=900,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError("Failed to start dbt subprocess") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("dbt docs generate timed out") from exc
+
+        if result.stdout:
+            logger.info("dbt docs stdout:\n%s", result.stdout)
+        if result.stderr:
+            logger.warning("dbt docs stderr:\n%s", result.stderr)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"dbt docs generate failed with exit code {result.returncode}. "
+                "See dbt output above for details."
+            )
+
+        logger.info("Published dbt artifacts to %s", DBT_ARTIFACTS_DIR)
+
+    run_dbt_gold() >> publish_dbt_artifacts()
 
 
 gold_dbt_coincap_assets()
