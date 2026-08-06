@@ -1147,3 +1147,63 @@ resource group limited to one running query, two queued queries, 128 MB soft mem
 **Revisit if**: Gold outgrows the 1 GB/hour local quota, a second agent workload needs its
 own budget, or the allow-list changes often enough to justify generating a reviewed config
 artifact from dbt metadata.
+
+---
+
+## D036 — Guardrails Start as an Isolated, Strict AST Core
+**Date**: 2026-08-06
+**Status**: accepted
+
+**Decision**: Keep every AI dependency in `ai_agent/requirements*.txt`, never in the
+Airflow image, and give that module its own Python 3.12 CI job. Implement the first MCP
+guardrail as a pure function over a SQLGlot Trino AST: accept exactly one root `SELECT`,
+reject `SELECT INTO`, require every physical table to be fully qualified, resolve CTEs
+before checking base tables, and compare every dependency with the explicit D035
+allow-list. Failures use the stable structured error envelope and are non-retryable.
+
+Runtime constraints start at the current tested families: MCP 1.x, Anthropic 0.x,
+Pydantic 2.x, SQLGlot 30.x, and Trino client 0.x. MCP is explicitly capped below 2 because
+the official v1 SDK remains the stable line; SQLGlot is capped to one major because its
+documented minor releases may contain breaking fixes.
+
+**Why**:
+
+- **The Airflow image is the wrong dependency boundary.** The pipeline can keep running
+  even if AI dependencies fail to resolve, and rebuilding an agent does not rebuild Spark,
+  Java, Airflow, or dbt.
+- **AST shape is enforceable; SQL text is not.** Prefix checks and regular expressions
+  cannot reliably distinguish comments, stacked statements, CTE aliases, or nested table
+  references. SQLGlot exposes those as typed nodes and scoped sources.
+- **Fully qualified names remove ambient state.** Rejecting one- and two-part names means
+  catalog/schema session defaults cannot silently change what a reviewed query reads.
+- **Strict first is measurable.** Root set operations such as `UNION` are rejected even
+  though they can be read-only. That is an intentional smaller language until the golden
+  set proves the capability is needed and tests define its safe AST shapes.
+- **CI belongs before transport.** The validator now has a deterministic gate before an
+  MCP client can reach it, so the highest-blast-radius logic is not first exercised through
+  a live server.
+
+**Consequences**:
+- Tableless `SELECT` expressions and Iceberg `FOR VERSION AS OF` queries are allowed.
+- DDL, DML, procedures, session commands, `SHOW`, `EXPLAIN`, stacked statements,
+  connector table-function attempts, unqualified names, and non-allow-listed tables fail
+  before any Trino connection exists.
+- Parse, read-only, and table-scope failures already match the future MCP error contract;
+  transport code can serialize them without translating exceptions ad hoc.
+- The dependency ranges are deliberately bounded but not locked. CI detects incompatible
+  releases; an eval/runtime reproducibility pass may add a lock file when the service has a
+  deployable image.
+
+**Alternatives considered**:
+- **Regex or keyword filtering**: rejected because it reasons about spelling rather than
+  statement structure and is easy to bypass accidentally.
+- **Engine grants only**: rejected because Trino denials are a last line of defense, not a
+  structured error the agent can use to correct a query.
+- **Accept all read-only query roots now**: rejected because each AST family expands the
+  proof and test surface before evals demonstrate a need.
+- **Install into the existing Airflow image**: rejected because it couples two independent
+  systems and makes every AI dependency change a pipeline rebuild.
+
+**Revisit if**: The golden set needs `UNION`/`INTERSECT`, MCP 2 becomes the stable supported
+line, SQLGlot 31 contains a required Trino fix, or a runnable image makes a lock file worth
+maintaining.

@@ -108,13 +108,18 @@ migrated from local Airflow to the cloud.
   identities retain the fallback resource group
 
 ### AI-Agent Platform Boundary
-- The future MCP server's engine identity is `agent`; Trino is the unbypassable read-only
+- The MCP server's engine identity is `agent`; Trino is the unbypassable read-only
   backstop, while richer SQL validation remains the MCP tool layer's responsibility
 - `config/ai-agent/allowed-tables.json` explicitly enumerates the five canonical dbt Gold
   relations. Adding a dbt model does not expose it automatically
 - Live Iceberg metadata remains authoritative for structure. The published dbt artifacts
   supply descriptions and lineage and are treated as potentially stale if they disagree
   with the live catalog
+- The first transport-agnostic guardrail slice parses the Trino AST, accepts exactly one
+  root `SELECT`, resolves physical tables without mistaking CTE names for tables, requires
+  `catalog.schema.table`, and checks every dependency against the explicit allow-list
+- AI runtime and test dependencies live under `ai_agent/`; they are installed by an
+  isolated CI job and are not part of the Airflow image (D036)
 
 ### Serving Layer - Apache Superset
 - Runs as an optional Docker Compose profile for end-user exploration

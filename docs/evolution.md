@@ -284,5 +284,9 @@ with the platform prerequisites listed in [`pre-ai-readiness.md`](pre-ai-readine
 The first prerequisite milestone landed on 2026-08-06: the future agent now has a
 read-only, resource-bounded Trino lane over an explicit five-table dbt Gold allow-list, and
 the Gold DAG publishes dbt metadata after successful builds. The platform now presents the
-boundary the MCP server was designed against; dependency approval and guardrail CI are the
-next gate before agent code.
+boundary the MCP server was designed against. Later the same day, D036 crossed the next
+gate: dependencies moved into an AI-only environment and CI job, and the first executable
+guardrail began rejecting anything except a single, fully qualified, allow-listed Trino
+`SELECT`. The agent still cannot execute a query—the adapters and MCP transport do not
+exist—but the highest-blast-radius boundary now has deterministic tests before it has a
+network surface.

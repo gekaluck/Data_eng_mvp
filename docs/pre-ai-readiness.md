@@ -59,18 +59,17 @@ All four gaps below are now closed by D035:
 
 ---
 
-## D. Decisions to make before writing code
+## D. Implementation decisions
 
-7. **New dependencies** (needs approval — CLAUDE.md §5). Phase A needs at least an MCP server
-   SDK, the Anthropic SDK, and a Trino-dialect SQL parser for the AST validator (sqlglot is
-   the obvious candidate). Recommendation: they live with `ai_agent/`, in its own
-   requirements file and its own container, never added to the Airflow image — that is what
-   keeps "extends, never modifies" true in the build as well as in the design.
-8. **Put the guardrail tests in CI.** CI today is static-only: ruff error rules, `compileall`,
-   and `dbt parse`; the pytest suite runs only inside Docker. The AST validator and
-   allow-list are pure Python with no stack dependency, and they are the components whose
-   bugs have the widest blast radius (F5). A CI job running `pytest ai_agent/` is the
-   cheapest guarantee in the whole plan.
+7. ~~**Approve and isolate new dependencies.**~~ **Complete (D036).** MCP, Anthropic,
+   Pydantic, SQLGlot, and Trino client constraints live in `ai_agent/requirements.txt`,
+   with test tools in `requirements-dev.txt`. Neither file is installed in the Airflow
+   image; a dedicated runtime container comes with the runnable server rather than with an
+   empty entry point.
+8. ~~**Put the guardrail tests in CI.**~~ **Complete.** The isolated Python 3.12 job installs
+   only the AI requirements and runs Ruff, `compileall`, and `pytest ai_agent/tests`. The
+   first 35 cases cover the allow-list, statement type, CTE resolution, table scope, time
+   travel, and structured error contract without starting the lakehouse stack.
 9. **Pin the model IDs, and say where the key lives.** R8 requires model IDs in every eval
    report. Decide the pinned models for both profiles at implementation time (the current
    family is Claude Opus 5 / Sonnet 5 rather than anything the design doc names), and add
@@ -84,9 +83,9 @@ All four gaps below are now closed by D035:
 
 ## Suggested order
 
-**Current position (2026-08-06): B1-B4 are complete.** Next approve D7/D8 (isolated AI
-dependencies plus pure-Python guardrail CI), then start the Phase A MCP server. C6 belongs
-in the eval harness, D9 at the provider boundary, and D10 in tool result metadata.
+**Current position (2026-08-06): B1-B4 and D7/D8 are complete, and the first guardrail
+slice is implemented.** Next build the metadata adapters/tools and MCP transports. C6
+belongs in the eval harness, D9 at the provider boundary, and D10 in tool result metadata.
 
 The ordering below is retained as the original plan and completion trail.
 

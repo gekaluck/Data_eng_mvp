@@ -196,6 +196,7 @@ the ignored `dbt/artifacts/` runtime directory for the AI metadata adapter. See
 | [`tests/`](tests)       | DAG-integrity, schema, and transform unit tests (pytest)        |
 | [`notebooks/`](notebooks)| JupyterLab exploration of the lakehouse                        |
 | [`superset/`](superset)   | Reproducible Superset image, configuration, and dashboard assets |
+| [`ai_agent/`](ai_agent)   | Isolated Phase A agent code, dependencies, and guardrail tests   |
 | [`scripts/`](scripts)   | PowerShell helpers for running the stack                        |
 | [`docs/`](docs)         | Architecture, decisions, runbook, milestones                    |
 
