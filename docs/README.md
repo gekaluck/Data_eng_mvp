@@ -21,7 +21,7 @@ mislead you.
 | How does Superset serve the data? | [`superset.md`](superset.md) | Serving profile, bootstrap |
 | How do I browse the lakehouse tables? | [`table_browser.md`](table_browser.md) | Jupyter/Trino exploration |
 | What is the AI-agent layer going to be? | [`ai-agent-architecture.md`](ai-agent-architecture.md) | **Design authority** for the next phase |
-| What must be done before that phase starts? | [`pre-ai-readiness.md`](pre-ai-readiness.md) | Punch list against the running system, checked 2026-07-31 |
+| What must be done before that phase starts? | [`pre-ai-readiness.md`](pre-ai-readiness.md) | Punch list against the running system, checked 2026-08-06 |
 | How should an agent work in this repo? | [`../CLAUDE.md`](../CLAUDE.md) | Operating rules — branching, scope, questions. [`../AGENTS.md`](../AGENTS.md) points here for non-Claude agents |
 
 **Historical, not current** — everything under [`historical/`](historical/) describes the

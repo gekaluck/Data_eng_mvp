@@ -1,0 +1,35 @@
+{
+  "rootGroups": [
+    {
+      "name": "global",
+      "softMemoryLimit": "100%",
+      "hardConcurrencyLimit": 10,
+      "maxQueued": 100,
+      "subGroups": [
+        {
+          "name": "agent",
+          "softMemoryLimit": "128MB",
+          "hardConcurrencyLimit": 1,
+          "maxQueued": 2,
+          "hardPhysicalDataScanLimit": "1GB"
+        },
+        {
+          "name": "default",
+          "softMemoryLimit": "100%",
+          "hardConcurrencyLimit": 10,
+          "maxQueued": 100
+        }
+      ]
+    }
+  ],
+  "selectors": [
+    {
+      "user": "agent",
+      "group": "global.agent"
+    },
+    {
+      "group": "global.default"
+    }
+  ],
+  "physicalDataScanQuotaPeriod": "1h"
+}
