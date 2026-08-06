@@ -110,13 +110,19 @@ Three layers with explicitly different jobs (Decision D4). The tool layer is ric
 | Control | Layer | Mechanism | What it stops |
 |---------|-------|-----------|---------------|
 | Read-only SQL | Tool | AST parse (Trino dialect); statement-type whitelist: single `SELECT` only. No DDL/DML, no `EXECUTE`, no `SET SESSION`, no multi-statement | Writes, session tampering, stacked statements |
-| Table allow-list | Tool | Extract all referenced tables from AST (post-qualification, including CTE-shadowing resolution); every one must be in the Gold allow-list | Access to Silver/Bronze/system tables |
+| Table allow-list | Tool | Require fully qualified physical tables, resolve CTE shadowing in the AST, normalize names, and require every dependency in the Gold allow-list | Access to Silver/Bronze/system tables and ambient catalog/schema defaults |
 | Row cap | Tool | Inject/lower `LIMIT` to configured max; set `truncated` flag when hit | Result floods into the LLM context |
 | Scan/cost cap | Tool | Per-query timeout; bytes-read abort via query stats polling | Runaway scans on a laptop-class stack |
 | Query budget | Tool | Token bucket per `request_id`; `fast`=3, `thorough`=10; exhaustion → `BUDGET_EXCEEDED` | Unbounded agent loops |
 | Read-only user | Engine | Trino user with SELECT-only grants on Gold catalog/schema | Anything a tool-layer parser bug lets through |
 | Resource group | Engine | Trino resource group: soft memory, concurrency/queue, hourly physical-scan quota | Repeated or concurrent scans that dodge tool-layer caps; the tool layer still owns per-query timeout |
 | Behavioral steering | Prompt | System-prompt scope rules ("only answer from available tables", "always cite SQL") | Nothing — advisory only, and the doc says so |
+
+**Implementation status (2026-08-06, D036).** The first tool-layer slice is live:
+single-statement Trino parsing, a root-`SELECT` whitelist, explicit `SELECT INTO` denial,
+CTE-aware fully qualified physical-table extraction, exact allow-list checks, and structured
+errors. Row/scan caps, budgets, audit logging, adapters, and transports are still unbuilt;
+the engine controls from D035 remain the only execution backstop until those land.
 
 Design stance worth defending: the AST validator is the **primary** control because it is deterministic, unit-testable, and LLM-independent — you can prove properties about it that you cannot prove about a prompt. The engine backstop exists because the validator is code and code has bugs; a `CREATE TABLE` that somehow survives parsing dies at the grant check. Defense in depth, with each layer catching a different failure class.
 

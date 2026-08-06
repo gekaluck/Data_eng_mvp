@@ -1,8 +1,8 @@
-# `ai_agent/` — AI-Agent Layer (Phase A skeleton)
+# `ai_agent/` — AI-Agent Layer (Phase A)
 
-> **Status: skeleton only.** This module is intentionally empty of implementation.
-> It marks where the AI-agent layer will be built and reserves the structure agreed
-> in the design doc.
+> **Status: guardrail foundation.** The first MCP-server core is implemented: strict
+> allow-list loading, Trino SQL parsing, physical-table extraction, and structured
+> fail-closed errors. Transports, adapters, execution caps, and the agent loop remain next.
 
 ## Purpose
 
@@ -10,10 +10,9 @@ Add a **text-to-analytics** capability on top of the existing lakehouse: ask a
 natural-language question, get a validated SQL answer over the **Gold layer** — with a
 confidence gate that refuses rather than guessing when checks fail.
 
-This module **extends, never modifies** the running Bronze/Silver/Gold platform. No DAG,
-transform, or dbt model changes are required to build it; the only platform-side additions
-are configuration (a read-only Trino user + resource group, and an Airflow step that
-publishes fresh dbt artifacts).
+This module **extends, never modifies** the running Bronze/Silver/Gold platform. Its Python
+dependencies live in `ai_agent/requirements.txt`, outside the Airflow image. The required
+platform configuration is already present (D035).
 
 ## Source of truth
 
@@ -22,7 +21,7 @@ failure modes, and decision log — lives in
 [`../docs/ai-agent-architecture.md`](../docs/ai-agent-architecture.md). **That document is
 authoritative.** This README is a signpost; do not paraphrase the design here (it drifts).
 
-## Planned structure (Phase A)
+## Structure (Phase A)
 
 Mirrors the component boundaries in `ai-agent-architecture.md §2.2`:
 
@@ -33,7 +32,20 @@ Mirrors the component boundaries in `ai-agent-architecture.md §2.2`:
 | `eval/`           | Golden-set eval harness driving the agent service API; execution-accuracy scoring, pinned model IDs, versioned reports. |
 
 Phases B (RAG over catalog docs) and C (Feast feature-store bridge) are sketches in the
-design doc and are **out of scope** for this skeleton.
+design doc and remain **out of scope**.
+
+## Test the current foundation
+
+Use an isolated Python 3.12 environment rather than the Airflow image:
+
+```bash
+python -m pip install -r ai_agent/requirements-dev.txt
+python -m pytest ai_agent/tests -v
+ruff check --select E9,F63,F7,F82 ai_agent
+```
+
+The `AI guardrail tests` CI job runs the same dependency install, lint, compile, and pytest
+checks without starting Docker services or contacting Trino or an LLM provider.
 
 ## Building here
 
