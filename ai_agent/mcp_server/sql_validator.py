@@ -49,6 +49,21 @@ def validate_sql(sql: str, allow_list: TableAllowList) -> ValidatedQuery:
 
     statement = statements[0]
     if not isinstance(statement, exp.Select) or statement.find(exp.Into):
+        # A read-only query root that is not a single SELECT — UNION/INTERSECT/EXCEPT or a
+        # parenthesized `(SELECT ...)` — is intentionally out of scope (D036), not a write.
+        # Report it as such: the agent loop reflects on this error to redraft, and calling
+        # a read-only query "not read-only" steers that retry down the wrong path.
+        if isinstance(statement, exp.Query) and not statement.find(exp.Into):
+            raise GuardrailError(
+                ErrorCode.NOT_READ_ONLY,
+                "Only a single top-level SELECT is supported; set operations and "
+                "parenthesized query roots are not accepted yet.",
+                hint=(
+                    "UNION/INTERSECT/EXCEPT and a parenthesized (SELECT ...) are "
+                    "read-only but outside the current single-SELECT scope (D036). "
+                    "Rewrite the query as one top-level SELECT."
+                ),
+            )
         raise GuardrailError(
             ErrorCode.NOT_READ_ONLY,
             "Only a single SELECT statement is allowed.",

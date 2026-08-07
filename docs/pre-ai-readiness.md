@@ -69,8 +69,9 @@ All four gaps below are now closed by D035:
    empty entry point.
 8. ~~**Put the guardrail tests in CI.**~~ **Complete.** The isolated Python 3.12 job installs
    only the AI requirements and runs Ruff, `compileall`, and `pytest ai_agent/tests`. The
-   current 82 cases cover the allow-list, statement type, CTE resolution, table scope, time
-   travel, structured errors, dbt docs/lineage, live-metadata query shapes, and schema drift
+   current 86 cases cover the allow-list, statement type (including read-only set operations
+   refused without being mislabelled as writes), CTE resolution, table scope, time travel,
+   structured errors, dbt docs/lineage, live-metadata query shapes, and schema drift
    behavior without starting the lakehouse stack.
 9. **Pin the model IDs, and say where the key lives.** R8 requires model IDs in every eval
    report. Decide the pinned models for both profiles at implementation time (the current

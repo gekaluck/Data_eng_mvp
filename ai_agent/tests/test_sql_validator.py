@@ -88,6 +88,35 @@ def test_rejects_every_non_select_statement(allow_list, sql):
 
 
 @pytest.mark.parametrize(
+    "sql",
+    [
+        (
+            "SELECT 1 FROM gold.crypto_dbt.daily_snapshot "
+            "UNION SELECT 1 FROM gold.crypto_dbt.latest_market_snapshot"
+        ),
+        (
+            "SELECT 1 FROM gold.crypto_dbt.daily_snapshot "
+            "INTERSECT SELECT 1 FROM gold.crypto_dbt.latest_market_snapshot"
+        ),
+        (
+            "SELECT 1 FROM gold.crypto_dbt.daily_snapshot "
+            "EXCEPT SELECT 1 FROM gold.crypto_dbt.latest_market_snapshot"
+        ),
+        "(SELECT * FROM gold.crypto_dbt.daily_snapshot)",
+    ],
+)
+def test_rejects_read_only_set_operations_without_implying_a_write(allow_list, sql):
+    # D036 keeps the accepted language to a single SELECT, but these roots are read-only.
+    # The refusal must not mislabel them as writes, or the loop redrafts the wrong thing.
+    with pytest.raises(GuardrailError) as raised:
+        validate_sql(sql, allow_list)
+
+    assert raised.value.code == ErrorCode.NOT_READ_ONLY
+    assert "single-SELECT scope" in raised.value.hint
+    assert "DDL, DML" not in raised.value.hint
+
+
+@pytest.mark.parametrize(
     ("sql", "blocked_name"),
     [
         ("SELECT * FROM daily_snapshot", "daily_snapshot"),
