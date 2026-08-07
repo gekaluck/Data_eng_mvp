@@ -437,6 +437,80 @@ Do not work around that validation to expose the server remotely: this slice has
 authentication design. HTTP 421 responses usually mean the client's `Host` or `Origin`
 header is outside the explicit loopback DNS-rebinding allow-list.
 
+### Run and check the owned natural-language agent
+
+The agent is a separate host process. It requires the MCP HTTP frontend and never connects
+to Trino directly. Use two PowerShell terminals from the repository root after installing
+`ai_agent/requirements.txt` in the active Python 3.12 environment.
+
+Terminal 1 — start MCP:
+
+```powershell
+python -m ai_agent.mcp_server --transport streamable-http
+```
+
+Terminal 2 — load the Anthropic key from gitignored `.env` into this process without
+printing it, then start the agent:
+
+```powershell
+$keyLine = Get-Content .env | Where-Object { $_ -match '^ANTHROPIC_API_KEY=' } | Select-Object -First 1
+if (-not $keyLine) { throw 'ANTHROPIC_API_KEY is missing from .env' }
+$env:ANTHROPIC_API_KEY = ($keyLine -split '=', 2)[1].Trim()
+python -m ai_agent.agent_service
+```
+
+The service intentionally does not auto-load `.env`; the key exists only in the child
+process environment. It starts at `http://127.0.0.1:8010` and uses
+`http://127.0.0.1:8000/mcp` by default. `AI_AGENT_PORT` and `AI_MCP_URL` may change those
+loopback endpoints. `AI_AGENT_HOST=0.0.0.0` fails closed because this service has no remote
+authentication design.
+
+In a third terminal, check health and submit one request:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8010/health
+
+$body = @{
+  question = 'Which two coin symbols are present in the latest daily snapshot?'
+  profile = 'fast'
+  request_id = 'manual-fast-1'
+} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8010/v1/questions `
+  -ContentType 'application/json' -Body $body
+```
+
+Expected: HTTP 200 with exactly one of `answer` or `refusal_reason`, plus `sql`,
+`tables_used`, `result_stats`, `caveats`, passed `confidence` checks, the selected
+`model_id`, and `prompt_version=agent-loop-v1`. Runtime failures are deliberate terminal
+refusals, not HTTP 500 answers fabricated from model memory. Invalid request shape/profile
+returns HTTP 422.
+
+Use `profile=thorough` only when the additional latency and hosted-model cost are wanted.
+It pins `claude-opus-5`, allows up to four drafts, and adds a critic; `fast` pins
+`claude-sonnet-5`, allows two drafts, and skips the critic. Stop both servers with Ctrl+C.
+
+For a no-cost end-to-end check of the state machine, real MCP client, and live Trino data,
+run the scripted-provider smoke below. It starts its own temporary MCP HTTP process, runs
+both profiles, and makes **no Anthropic or CoinCap call**:
+
+```powershell
+$repoRoot = (Get-Location).Path
+docker run --rm --mount "type=bind,source=$repoRoot,target=/workspace" `
+  -w /workspace -e AI_TRINO_HOST=host.docker.internal python:3.12-slim `
+  sh -c "pip install -q -r ai_agent/requirements.txt && python -m ai_agent.smoke_agent"
+```
+
+Expected: `hosted_model_called` is `false`; both profiles return an answer over
+`gold.crypto_dbt.daily_snapshot`; the thorough report includes `critic_passed`; and each
+report identifies `scripted-no-api` while still carrying real Trino work statistics and
+the standard data caveats.
+
+If startup says `ANTHROPIC_API_KEY is required`, confirm the placeholder in `.env` was
+replaced and the loading commands ran in the same terminal. If the response refuses with an
+MCP `ENGINE_ERROR`, check the MCP process, Trino health, and `AI_MCP_URL`. Treat
+`BUDGET_EXCEEDED`, deadline exhaustion, column-shape mismatch, or critic failure as evidence
+to inspect—not as reasons to bypass the guardrail or raise limits for one question.
+
 ### A budgeted tool refuses with `BUDGET_EXCEEDED`, or eval efficiency numbers drift
 
 Budgets are process-local and keyed by `request_id`; there is no "request complete" call.

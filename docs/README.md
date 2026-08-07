@@ -21,7 +21,7 @@ mislead you.
 | How does Superset serve the data? | [`superset.md`](superset.md) | Serving profile, bootstrap |
 | How do I browse the lakehouse tables? | [`table_browser.md`](table_browser.md) | Jupyter/Trino exploration |
 | What is the AI-agent layer and what is implemented? | [`ai-agent-architecture.md`](ai-agent-architecture.md) | **Design authority** and current implementation boundary |
-| What remains before the agent loop? | [`pre-ai-readiness.md`](pre-ai-readiness.md) | Completion trail and punch list, checked 2026-08-07 |
+| What remains in Phase A? | [`pre-ai-readiness.md`](pre-ai-readiness.md) | Completion trail and eval-harness punch list, checked 2026-08-07 |
 | How should an agent work in this repo? | [`../CLAUDE.md`](../CLAUDE.md) | Operating rules — branching, scope, questions. [`../AGENTS.md`](../AGENTS.md) points here for non-Claude agents |
 
 **Historical, not current** — everything under [`historical/`](historical/) describes the
@@ -109,7 +109,9 @@ The platform is stable. The active track is the **AI-agent layer** —
 under [`../ai_agent/`](../ai_agent). Its strict guardrail validates Trino SQL against a
 table allow-list; five read-only metadata tools, budgeted scan-free `explain_query`, and
 capped/audited `sample_rows` plus governed `execute_query` now run over MCP stdio and
-loopback streamable HTTP. The layer reads Gold only through that allow-list,
+loopback streamable HTTP. A local bounded agent loop now consumes only that MCP surface,
+using pinned Claude 5 models to return a typed answer or visible refusal. The layer reads
+Gold only through that allow-list,
 which is why Gold's column-level descriptions in `dbt/models/gold/schema.yml` matter more
 than they look: they are the semantic layer an agent reasons over.
 
@@ -118,8 +120,9 @@ fetched and the open-items table in [`incidents.md`](incidents.md) is empty. The
 found the pipeline running a day behind — GitHub's cron drift had outgrown the
 orchestrator's one-hour buffer (I20) — and moved it to 05:30 UTC (D034). The Trino/dbt
 prerequisites, guardrail core, metadata adapters, MCP transports, and scan-free engine
-planning, bounded sampling, and row/scan/time-capped analytical execution are complete. The
-agent loop and eval work remain; their ordering is tracked in
+planning, bounded sampling, row/scan/time-capped analytical execution, and the owned
+natural-language loop are complete. The execution-accuracy eval harness remains; its
+requirements are tracked in
 [`pre-ai-readiness.md`](pre-ai-readiness.md).
 
 ---

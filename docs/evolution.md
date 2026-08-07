@@ -333,3 +333,21 @@ that distributed work stops at an exact byte. With the budget map now bounded as
 MCP server has all eight governed tools the owned loop needs. The next uncertainty moves
 up a layer: whether a pinned LLM can use this boundary accurately enough to answer rather
 than merely generate plausible SQL.
+
+D042 moved that uncertainty into executable code without weakening the boundary. The owned
+service is deliberately a second local process, not a shortcut into the MCP internals: it
+opens the same streamable-HTTP session an external client would and can only learn schema,
+sample rows, plan SQL, or execute SQL through the eight governed tools. PLAN, DRAFT, CRITIC,
+and ANSWER are structured Claude decisions, but code owns the loop's 30/120-second clocks,
+two/four draft limits, sample caps, exact result-shape check, and final answer-or-refusal
+envelope. `fast` pins Sonnet 5; `thorough` pins Opus 5 and adds the critic.
+
+One paper assumption failed before the first paid call: the design's "temperature 0"
+stability metric no longer fits Claude 5, which rejects non-default sampling parameters.
+The implementation pins model, effort, prompt version, and eventually the eval data
+snapshot instead. That is a better definition of reproducibility for an API whose internals
+are not deterministic anyway. A scripted provider then exercised both profiles end to end
+against the real MCP server and Trino without spending hosted-model or CoinCap quota. The
+loop exists; the next honest question is empirical—how often it produces the right result,
+and how often refusing is the right call. That belongs to the golden-set eval, not another
+round of prompt confidence.
