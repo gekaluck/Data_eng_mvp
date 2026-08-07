@@ -1,4 +1,4 @@
-"""MCP frontends for governed metadata and scan-free query planning."""
+"""MCP frontends for governed metadata, planning, and capped row sampling."""
 
 import argparse
 import json
@@ -6,7 +6,7 @@ import os
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal, TypeVar
+from typing import Annotated, Literal, TypeVar
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -14,6 +14,13 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import BaseModel, Field, RootModel
 
 from ai_agent.mcp_server.allow_list import TableAllowList
+from ai_agent.mcp_server.audit import JsonlAuditLog
+from ai_agent.mcp_server.budget import (
+    MAX_REQUEST_ID_CHARS,
+    REQUEST_ID_PATTERN,
+    BudgetProfile,
+    RequestBudgetManager,
+)
 from ai_agent.mcp_server.dbt_artifacts import DbtArtifactAdapter
 from ai_agent.mcp_server.errors import ErrorCode, GuardrailError
 from ai_agent.mcp_server.metadata_models import (
@@ -29,11 +36,11 @@ from ai_agent.mcp_server.query_explainer import (
     QueryExplainer,
     QueryExplanation,
 )
+from ai_agent.mcp_server.query_sampler import MAX_SAMPLE_ROWS, QuerySampler, SampleRows
 from ai_agent.mcp_server.trino_metadata import (
     IcebergMetadataAdapter,
     TrinoDbApiRunner,
 )
-
 
 SERVER_NAME = "crypto-lakehouse-metadata"
 DEFAULT_HTTP_HOST = "127.0.0.1"
@@ -82,6 +89,10 @@ class ModelDocsOutput(RootModel[ModelDocs | ToolErrorPayload]):
 
 class ExplainQueryOutput(RootModel[QueryExplanation | ToolErrorPayload]):
     """Advertised output schema for explain_query."""
+
+
+class SampleRowsOutput(RootModel[SampleRows | ToolErrorPayload]):
+    """Advertised output schema for sample_rows."""
 
 
 READ_ONLY_ANNOTATIONS = ToolAnnotations(
@@ -139,12 +150,22 @@ def build_metadata_tools() -> MetadataTools:
     )
 
 
-def build_query_explainer() -> QueryExplainer:
-    """Compose the scan-free planner with the same allow-list and Trino identity."""
+def build_query_tools() -> tuple[QueryExplainer, QuerySampler]:
+    """Compose planning/sampling around one shared process-local budget."""
     allow_list = TableAllowList.from_file()
-    return QueryExplainer(
-        TrinoDbApiRunner.from_env(source="ai-explain-query"),
-        allow_list,
+    budget = RequestBudgetManager()
+    return (
+        QueryExplainer(
+            TrinoDbApiRunner.from_env(source="ai-explain-query"),
+            allow_list,
+            budget,
+        ),
+        QuerySampler(
+            TrinoDbApiRunner.from_env(source="ai-sample-rows"),
+            allow_list,
+            budget,
+            JsonlAuditLog.from_env(),
+        ),
     )
 
 
@@ -152,11 +173,15 @@ def create_mcp_server(
     metadata_tools: MetadataTools | None = None,
     *,
     query_explainer: QueryExplainer | None = None,
+    query_sampler: QuerySampler | None = None,
     http: HttpSettings | None = None,
 ) -> FastMCP:
     """Create one MCP server whose tools are identical on both transports."""
     tools = metadata_tools or build_metadata_tools()
-    explainer = query_explainer or build_query_explainer()
+    if query_explainer is None or query_sampler is None:
+        built_explainer, built_sampler = build_query_tools()
+        query_explainer = query_explainer or built_explainer
+        query_sampler = query_sampler or built_sampler
     settings = http or HttpSettings.from_env()
     transport_security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
@@ -170,9 +195,9 @@ def create_mcp_server(
     server = FastMCP(
         SERVER_NAME,
         instructions=(
-            "Read-only metadata and scan-free SQL planning for the explicitly "
-            "allow-listed dbt Gold catalog. This server does not execute "
-            "caller-supplied SQL."
+            "Read-only metadata, scan-free SQL planning, and capped audited samples "
+            "for the explicitly allow-listed dbt Gold catalog. This server never "
+            "executes caller-supplied SQL."
         ),
         host=settings.host,
         port=settings.port,
@@ -182,7 +207,7 @@ def create_mcp_server(
         transport_security=transport_security,
     )
     register_metadata_tools(server, tools)
-    register_query_tools(server, explainer)
+    register_query_tools(server, query_explainer, query_sampler)
     return server
 
 
@@ -266,8 +291,12 @@ def register_metadata_tools(server: FastMCP, tools: MetadataTools) -> None:
         return _invoke(lambda: tools.get_model_docs(model))
 
 
-def register_query_tools(server: FastMCP, explainer: QueryExplainer) -> None:
-    """Register scan-free query planning separately from future execution tools."""
+def register_query_tools(
+    server: FastMCP,
+    explainer: QueryExplainer,
+    sampler: QuerySampler,
+) -> None:
+    """Register budgeted planning/sampling separately from future arbitrary execution."""
 
     @server.tool(annotations=READ_ONLY_ANNOTATIONS)
     def explain_query(
@@ -282,9 +311,66 @@ def register_query_tools(server: FastMCP, explainer: QueryExplainer) -> None:
                 ),
             ),
         ],
+        request_id: Annotated[
+            str,
+            Field(
+                min_length=1,
+                max_length=MAX_REQUEST_ID_CHARS,
+                pattern=REQUEST_ID_PATTERN,
+                description="Stable ID for one natural-language question.",
+            ),
+        ],
+        profile: Annotated[
+            BudgetProfile,
+            Field(description="Per-request engine-call budget profile."),
+        ],
     ) -> Annotated[CallToolResult, ExplainQueryOutput]:
         """Validate SQL and return a bounded distributed plan without scanning rows."""
-        return _invoke(lambda: explainer.explain_query(sql))
+        return _invoke(
+            lambda: explainer.explain_query(
+                sql,
+                request_id=request_id,
+                profile=profile,
+            )
+        )
+
+    @server.tool(annotations=READ_ONLY_ANNOTATIONS)
+    def sample_rows(
+        table: Annotated[
+            str,
+            Field(min_length=1, description="Fully qualified allow-listed table."),
+        ],
+        n: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_SAMPLE_ROWS,
+                description="Number of rows to return (maximum 20).",
+            ),
+        ],
+        request_id: Annotated[
+            str,
+            Field(
+                min_length=1,
+                max_length=MAX_REQUEST_ID_CHARS,
+                pattern=REQUEST_ID_PATTERN,
+                description="Stable ID for one natural-language question.",
+            ),
+        ],
+        profile: Annotated[
+            BudgetProfile,
+            Field(description="Per-request engine-call budget profile."),
+        ],
+    ) -> Annotated[CallToolResult, SampleRowsOutput]:
+        """Return at most 20 rows through a server-built, audited Gold SELECT."""
+        return _invoke(
+            lambda: sampler.sample_rows(
+                table,
+                n=n,
+                request_id=request_id,
+                profile=profile,
+            )
+        )
 
 
 def _invoke(operation: Callable[[], PayloadT]) -> CallToolResult:
@@ -313,19 +399,21 @@ def run_server(
     *,
     metadata_tools: MetadataTools | None = None,
     query_explainer: QueryExplainer | None = None,
+    query_sampler: QuerySampler | None = None,
     http: HttpSettings | None = None,
 ) -> None:
     """Run the same registered server over stdio or local Streamable HTTP."""
     server = create_mcp_server(
         metadata_tools,
         query_explainer=query_explainer,
+        query_sampler=query_sampler,
         http=http,
     )
     server.run(transport=transport)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the AI metadata MCP server.")
+    parser = argparse.ArgumentParser(description="Run the governed AI MCP server.")
     parser.add_argument(
         "--transport",
         choices=("stdio", "streamable-http"),

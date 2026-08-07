@@ -16,7 +16,6 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
-
 EXPECTED_TOOLS = {
     "list_tables",
     "get_table_schema",
@@ -24,12 +23,13 @@ EXPECTED_TOOLS = {
     "get_lineage",
     "get_model_docs",
     "explain_query",
+    "sample_rows",
 }
 Transport = Literal["stdio", "streamable-http"]
 
 
 async def exercise_session(session: ClientSession) -> dict[str, Any]:
-    """Call every metadata tool through a real MCP ClientSession."""
+    """Exercise the governed tool registry through a real MCP ClientSession."""
     await session.initialize()
     listed = await session.list_tools()
     names = {tool.name for tool in listed.tools}
@@ -42,6 +42,7 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
     if len(tables) != 5:
         raise RuntimeError(f"Expected five allow-listed tables, got {len(tables)}.")
     table = tables[0]["table"]
+    request = {"request_id": "smoke-request", "profile": "fast"}
 
     calls = {
         "get_table_schema": {"table": table},
@@ -57,7 +58,7 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
 
     explained = await session.call_tool(
         "explain_query",
-        arguments={"sql": f"SELECT * FROM {table} LIMIT 1"},
+        arguments={"sql": f"SELECT * FROM {table} LIMIT 1", **request},
     )
     _require_success("explain_query", explained)
     if explained.structuredContent.get("valid") is not True:
@@ -65,7 +66,10 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
 
     invalid = await session.call_tool(
         "explain_query",
-        arguments={"sql": f"SELECT __mcp_missing_column__ FROM {table}"},
+        arguments={
+            "sql": f"SELECT __mcp_missing_column__ FROM {table}",
+            **request,
+        },
     )
     _require_success("explain_query semantic verdict", invalid)
     if (
@@ -74,6 +78,25 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
         != "COLUMN_NOT_FOUND"
     ):
         raise RuntimeError(f"Semantic validation verdict failed: {invalid}")
+
+    sampled = await session.call_tool(
+        "sample_rows",
+        arguments={"table": table, "n": 2, **request},
+    )
+    _require_success("sample_rows", sampled)
+    if len(sampled.structuredContent.get("rows", [])) > 2:
+        raise RuntimeError(f"sample_rows exceeded its hard cap: {sampled}")
+
+    exhausted = await session.call_tool(
+        "explain_query",
+        arguments={"sql": "SELECT 1", **request},
+    )
+    if (
+        exhausted.isError is not True
+        or not isinstance(exhausted.structuredContent, dict)
+        or exhausted.structuredContent.get("code") != "BUDGET_EXCEEDED"
+    ):
+        raise RuntimeError(f"Shared query budget contract failed: {exhausted}")
 
     denied = await session.call_tool(
         "get_model_docs",
@@ -97,6 +120,9 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
         "explain_valid": explained.structuredContent["valid"],
         "plan_chars": len(explained.structuredContent["plan_summary"]),
         "semantic_denial_code": invalid.structuredContent["diagnostic"]["code"],
+        "sample_rows": len(sampled.structuredContent["rows"]),
+        "sample_columns": len(sampled.structuredContent["columns"]),
+        "budget_denial_code": exhausted.structuredContent["code"],
         "denial_code": denied.structuredContent["code"],
     }
 
@@ -183,7 +209,7 @@ async def smoke(transports: Sequence[Transport]) -> dict[str, Any]:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Smoke-test live MCP metadata transports.")
+    parser = argparse.ArgumentParser(description="Smoke-test live governed MCP transports.")
     parser.add_argument(
         "--transport",
         choices=("stdio", "streamable-http", "both"),

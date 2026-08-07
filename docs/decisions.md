@@ -1404,3 +1404,73 @@ a connection/planning failure is retryable.
 **Revisit if**: Real queries routinely hit the plan cap, Trino changes distributed-plan
 output enough to make text unusable, planning itself needs budget accounting, or the agent
 requires a stable structured plan representation rather than an opaque diagnostic aid.
+
+---
+
+## D040 — Query Budgets Precede Capped Business-Row Sampling
+**Date**: 2026-08-07
+**Status**: accepted
+
+**Decision**: Require a caller-supplied `request_id` and budget `profile` (`fast` or
+`thorough`) on both `explain_query` and the new `sample_rows`. One process-local budget
+manager is shared by both tools: every Trino planning or sampling attempt consumes one
+token immediately before the engine call, including attempts that end in an engine error.
+Metadata tools and requests rejected locally before Trino remain free. `fast` permits three
+engine calls and `thorough` permits ten; a request ID cannot change profile midway.
+
+`sample_rows` accepts only an allow-listed table and `n` from 1 through 20. The server—not
+the caller—constructs `SELECT * FROM "catalog"."schema"."table" LIMIT n`, so the sampling
+surface has no caller SQL, filter, expression, or ordering channel. Every accepted sample
+attempt, including local validation and budget denials, is appended to a gitignored local
+JSONL audit before the result or error returns. The record contains request/profile,
+client, table, generated SQL, validation verdict, timestamp, elapsed time, columns and row
+count, and a failure code; raw business-row values are deliberately excluded. If the
+required audit append fails, the sample fails closed with a non-retryable `ENGINE_ERROR`.
+
+**Why**:
+
+- **One budget must cover the whole analytical request.** Separate counters for planning
+  and sampling would let a loop spend both limits and defeat R4's request-level bound.
+- **Charge at the engine boundary.** Local syntax, input, and allow-list denials cost no
+  Trino work, while semantic, access, connection, and result-shape failures still consumed
+  a real engine attempt and therefore consume a token.
+- **Sampling does not need a miniature SQL language.** A fixed server-owned statement is
+  enough to inspect types and value formats and is easier to prove bounded than accepting
+  caller predicates or ordering.
+- **Auditability is part of returning business data.** Writing before return prevents a
+  successful read from becoming invisible. Omitting raw values keeps this debugging/eval
+  record materially smaller and less sensitive than a data copy.
+- **Process-local state matches the current deployment.** Both supported transports are
+  local and single-process under the R2 threat model; a durable/shared counter would add a
+  service before there is a multi-process requirement.
+
+**Consequences**:
+
+- Both MCP transports now advertise seven identical read-only tools: five metadata
+  methods, budgeted `explain_query`, and capped/audited `sample_rows`.
+- MCP clients must generate one stable request ID per natural-language question and reuse
+  the same profile across planning and sampling calls. Restarting the MCP process resets
+  its budgets; inventing a new ID to evade exhaustion violates the client contract.
+- The default audit path is `ai_agent/runtime/query-audit.jsonl`; it may be changed with
+  `AI_AUDIT_LOG_PATH`. The runtime directory remains untracked.
+- Arbitrary analytical SQL is still unavailable. `execute_query` remains the next tool and
+  must add row truncation, per-query timeout/scan controls, stats, and the same shared
+  budget/audit boundary before it is exposed.
+
+**Alternatives considered**:
+
+- **Budget only data scans**: rejected because repeated planning can still create an
+  unbounded loop and consumes real Trino resources.
+- **Separate budgets per tool**: rejected because the designed budget is per question, not
+  per capability.
+- **Accept caller SQL with an injected `LIMIT 20`**: rejected because that is arbitrary
+  query execution without the scan/time/stat controls promised for `execute_query`.
+- **Audit after returning, or include raw rows**: rejected because post-return writes can
+  silently disappear and row values are unnecessary for the current debugging purpose.
+- **Persist budgets in a database**: deferred because the present local, single-process
+  server has no coordination requirement that justifies another stateful dependency.
+
+**Revisit if**: The MCP server gains multiple workers, remote/multi-user access, durable
+request resumption, or authenticated client identity; sampling needs deterministic ordering
+for an evaluated use case; or audit records become a compliance boundary rather than a
+local debugging/eval instrument.
