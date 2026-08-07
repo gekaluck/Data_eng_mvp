@@ -308,3 +308,14 @@ feedback (`valid: false`) rather than a generic server failure, while access and
 problems remain tool errors. The tempting companion, `sample_rows`, was deferred: unlike
 planning it reads business data, and the design already promises an audit record and a
 budget charge for every sample. Those controls should exist before that tool does.
+
+D040 supplied those controls and then added the sample, in that order. Planning and
+sampling now spend from the same request-scoped counter—three Trino attempts in `fast`, ten
+in `thorough`—so exploration cannot acquire a second hidden budget. `sample_rows` never
+accepts SQL; it owns a quoted `SELECT * ... LIMIT n`, refuses more than 20 rows, and writes
+the attempt to a local JSONL record before returning. The audit keeps the evidence needed
+to debug a loop (request, table, verdict, timing, shape, failure) without quietly becoming
+a second store of business-row values. The first live parity check used all three fast
+tokens on each transport and proved the fourth call fails before Trino. The remaining query
+step is deliberately larger: `execute_query` still needs arbitrary-SQL row truncation,
+scan/time enforcement, execution stats, and the same fail-closed audit boundary.

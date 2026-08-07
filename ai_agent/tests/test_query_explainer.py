@@ -4,10 +4,10 @@ import pytest
 from trino.exceptions import TrinoUserError
 
 from ai_agent.mcp_server.allow_list import TableAllowList
+from ai_agent.mcp_server.budget import RequestBudgetManager
 from ai_agent.mcp_server.errors import ErrorCode, GuardrailError
 from ai_agent.mcp_server.query_explainer import MAX_SQL_CHARS, QueryExplainer
 from ai_agent.mcp_server.trino_metadata import QueryResult
-
 
 TABLE = "gold.crypto_dbt.daily_snapshot"
 
@@ -33,11 +33,26 @@ def allow_list():
     return TableAllowList(tables=frozenset({TABLE}))
 
 
-def test_explains_validated_select_without_executing_caller_sql_directly(allow_list):
+@pytest.fixture
+def budget():
+    return RequestBudgetManager()
+
+
+def explain(explainer, sql, *, request_id="request-1", profile="fast"):
+    return explainer.explain_query(
+        sql,
+        request_id=request_id,
+        profile=profile,
+    )
+
+
+def test_explains_validated_select_without_executing_caller_sql_directly(
+    allow_list, budget
+):
     runner = FakeRunner()
     sql = f"SELECT snapshot_date FROM {TABLE} LIMIT 1"
 
-    result = QueryExplainer(runner, allow_list).explain_query(sql)
+    result = explain(QueryExplainer(runner, allow_list, budget), sql)
 
     assert result.valid is True
     assert result.sql == sql
@@ -46,36 +61,43 @@ def test_explains_validated_select_without_executing_caller_sql_directly(allow_l
     assert result.plan_truncated is False
     assert result.diagnostic is None
     assert runner.calls == [f"EXPLAIN (TYPE DISTRIBUTED) {sql}"]
+    assert budget.status("request-1", "fast").used == 1
 
 
-def test_ast_denial_happens_before_trino(allow_list):
+def test_ast_denial_happens_before_trino(allow_list, budget):
     runner = FakeRunner()
 
     with pytest.raises(GuardrailError) as raised:
-        QueryExplainer(runner, allow_list).explain_query(
+        explain(
+            QueryExplainer(runner, allow_list, budget),
             "SELECT * FROM silver.crypto.price_snapshots"
         )
 
     assert raised.value.code == ErrorCode.TABLE_NOT_ALLOWED
     assert runner.calls == []
+    assert budget.status("request-1", "fast").used == 0
 
 
-def test_truncates_large_plan_and_marks_it_explicitly(allow_list):
+def test_truncates_large_plan_and_marks_it_explicitly(allow_list, budget):
     runner = FakeRunner(
         result=QueryResult(columns=("Query Plan",), rows=(("abcdef",),))
     )
 
-    result = QueryExplainer(
-        runner,
-        allow_list,
-        max_plan_chars=4,
-    ).explain_query("SELECT 1")
+    result = explain(
+        QueryExplainer(
+            runner,
+            allow_list,
+            budget,
+            max_plan_chars=4,
+        ),
+        "SELECT 1",
+    )
 
     assert result.plan_summary == "abcd"
     assert result.plan_truncated is True
 
 
-def test_semantic_user_error_is_a_false_validation_verdict(allow_list):
+def test_semantic_user_error_is_a_false_validation_verdict(allow_list, budget):
     failure = TrinoUserError(
         {
             "errorCode": 47,
@@ -87,10 +109,14 @@ def test_semantic_user_error_is_a_false_validation_verdict(allow_list):
         query_id="query-1",
     )
 
-    result = QueryExplainer(
-        FakeRunner(failure=failure),
-        allow_list,
-    ).explain_query(f"SELECT missing FROM {TABLE}")
+    result = explain(
+        QueryExplainer(
+            FakeRunner(failure=failure),
+            allow_list,
+            budget,
+        ),
+        f"SELECT missing FROM {TABLE}",
+    )
 
     assert result.valid is False
     assert result.plan_summary is None
@@ -101,9 +127,10 @@ def test_semantic_user_error_is_a_false_validation_verdict(allow_list):
         "line": 1,
         "column": 8,
     }
+    assert budget.status("request-1", "fast").used == 1
 
 
-def test_permission_denial_is_an_engine_configuration_error(allow_list):
+def test_permission_denial_is_an_engine_configuration_error(allow_list, budget):
     failure = TrinoUserError(
         {
             "errorCode": 4,
@@ -114,24 +141,31 @@ def test_permission_denial_is_an_engine_configuration_error(allow_list):
     )
 
     with pytest.raises(GuardrailError) as raised:
-        QueryExplainer(FakeRunner(failure=failure), allow_list).explain_query(
-            f"SELECT * FROM {TABLE}"
+        explain(
+            QueryExplainer(FakeRunner(failure=failure), allow_list, budget),
+            f"SELECT * FROM {TABLE}",
         )
 
     assert raised.value.code == ErrorCode.ENGINE_ERROR
     assert raised.value.retryable is False
+    assert budget.status("request-1", "fast").used == 1
 
 
-def test_connection_failure_is_retryable_engine_error(allow_list):
+def test_connection_failure_is_retryable_engine_error(allow_list, budget):
     with pytest.raises(GuardrailError) as raised:
-        QueryExplainer(
-            FakeRunner(failure=OSError("connection refused")),
-            allow_list,
-        ).explain_query("SELECT 1")
+        explain(
+            QueryExplainer(
+                FakeRunner(failure=OSError("connection refused")),
+                allow_list,
+                budget,
+            ),
+            "SELECT 1",
+        )
 
     assert raised.value.code == ErrorCode.ENGINE_ERROR
     assert raised.value.retryable is True
     assert "connection refused" in raised.value.message
+    assert budget.status("request-1", "fast").used == 1
 
 
 @pytest.mark.parametrize(
@@ -142,19 +176,25 @@ def test_connection_failure_is_retryable_engine_error(allow_list):
         QueryResult(columns=("Query Plan",), rows=((123,),)),
     ],
 )
-def test_incompatible_explain_shape_fails_closed(allow_list, result):
+def test_incompatible_explain_shape_fails_closed(allow_list, budget, result):
     with pytest.raises(GuardrailError) as raised:
-        QueryExplainer(FakeRunner(result=result), allow_list).explain_query("SELECT 1")
+        explain(
+            QueryExplainer(FakeRunner(result=result), allow_list, budget),
+            "SELECT 1",
+        )
 
     assert raised.value.code == ErrorCode.ENGINE_ERROR
     assert raised.value.retryable is False
 
 
-def test_rejects_unbounded_sql_before_parsing_or_planning(allow_list):
+def test_rejects_unbounded_sql_before_parsing_or_planning(allow_list, budget):
     runner = FakeRunner()
 
     with pytest.raises(GuardrailError) as raised:
-        QueryExplainer(runner, allow_list).explain_query(" " * (MAX_SQL_CHARS + 1))
+        explain(
+            QueryExplainer(runner, allow_list, budget),
+            " " * (MAX_SQL_CHARS + 1),
+        )
 
     assert raised.value.code == ErrorCode.PARSE_ERROR
     assert runner.calls == []
@@ -162,11 +202,12 @@ def test_rejects_unbounded_sql_before_parsing_or_planning(allow_list):
 
 @pytest.mark.parametrize("max_plan_chars", [0, True, 1.5])
 def test_plan_cap_configuration_must_be_a_positive_integer(
-    allow_list, max_plan_chars
+    allow_list, budget, max_plan_chars
 ):
     with pytest.raises(ValueError):
         QueryExplainer(
             FakeRunner(),
             allow_list,
+            budget,
             max_plan_chars=max_plan_chars,
         )

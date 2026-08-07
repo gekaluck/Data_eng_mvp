@@ -341,9 +341,10 @@ and `schema_warnings` is empty. If it fails or warns:
 ### Check the MCP metadata server manually
 
 The server has one tool registry and two frontends. The most useful manual check exercises
-both with the official MCP client, calls all five metadata tools plus `explain_query`, and
-verifies both semantic and allow-list denials. It uses only fixed-shape metadata reads and
-ordinary `EXPLAIN`; it does not call CoinCap or scan Gold business rows.
+both with the official MCP client, calls all five metadata tools plus `explain_query` and
+`sample_rows`, and verifies semantic, allow-list, and budget denials. It does not call
+CoinCap. The only Gold business-data scan is the server-owned sample, capped at two rows in
+this smoke check.
 
 With Trino running locally:
 
@@ -355,9 +356,10 @@ docker run --rm --mount "type=bind,source=$repoRoot,target=/workspace" `
 ```
 
 Expected: separate `stdio` and `streamable-http` reports list exactly `list_tables`,
-`get_table_schema`, `get_table_snapshots`, `get_lineage`, `get_model_docs`, and
-`explain_query`. Both report the same first allow-listed table, `explain_valid: true`,
-`semantic_denial_code: COLUMN_NOT_FOUND`, and `denial_code: TABLE_NOT_ALLOWED`.
+`get_table_schema`, `get_table_snapshots`, `get_lineage`, `get_model_docs`,
+`explain_query`, and `sample_rows`. Both report the same first allow-listed table,
+`explain_valid: true`, `semantic_denial_code: COLUMN_NOT_FOUND`, `sample_rows: 2`,
+`budget_denial_code: BUDGET_EXCEEDED`, and `denial_code: TABLE_NOT_ALLOWED`.
 
 `plan_chars` is the bounded distributed plan returned by Trino. If `explain_query` returns
 `valid: false`, inspect its `diagnostic.code`, `message`, and optional line/column before
@@ -365,6 +367,27 @@ changing the SQL. A structured retryable `ENGINE_ERROR` instead means planning c
 reach Trino; a non-retryable access error means the restricted `agent` configuration has
 drifted. Never replace the server-owned `EXPLAIN` with `EXPLAIN ANALYZE`, which executes the
 query and violates this tool's no-scan boundary.
+
+`explain_query` and `sample_rows` both require a `request_id` and `profile`. Reuse one
+stable ID for the whole natural-language question and keep its profile fixed: `fast` allows
+three total Trino planning/sample attempts and `thorough` allows ten. Metadata calls and
+requests rejected locally before Trino are free. A semantic planning error, connection
+failure, or other attempted engine call still spends one token; starting a new request ID
+to evade exhaustion violates the tool contract.
+
+Every schema-valid `sample_rows` invocation must append an audit record before returning a
+result or error. Inspect the latest records from the repository root with:
+
+```powershell
+Get-Content ai_agent/runtime/query-audit.jsonl -Tail 5
+```
+
+The default file is gitignored and contains request/profile, table, generated SQL,
+validation verdict, timing, columns/row count, and failure code—never raw row values. Set
+`AI_AUDIT_LOG_PATH` before server startup to use another local path. `Required query audit
+write failed` means the parent path cannot be created or appended; fix its path/permissions
+and retry with the same request ID. The failure is deliberately non-retryable at the tool
+boundary so business rows are never returned without their audit record.
 
 To wire a local MCP host directly, install `ai_agent/requirements.txt` in Python 3.12 and
 configure this stdio command (it is also the default):
@@ -386,6 +409,26 @@ intentionally restricted to `127.0.0.1`, `localhost`, or `::1`; `0.0.0.0` fails 
 Do not work around that validation to expose the server remotely: this slice has no remote
 authentication design. HTTP 421 responses usually mean the client's `Host` or `Origin`
 header is outside the explicit loopback DNS-rebinding allow-list.
+
+### A budgeted tool refuses with `BUDGET_EXCEEDED`, or eval efficiency numbers drift
+
+Budgets are process-local and keyed by `request_id`, and nothing resets them for the life of
+the server (D040) — there is no "request complete" call. A long-lived streamable-HTTP server
+(the A2 eval transport) keeps every `request_id`'s token count until it restarts. Two
+consequences bite the eval harness (§6), not single interactive questions:
+
+- **A reused `request_id` resumes an old budget.** Driving several runs against one server
+  process means a question that reuses an ID from an earlier run starts partway through — or
+  already past — its token limit, so it refuses with `BUDGET_EXCEEDED` or spends fewer tokens
+  than a cold request would, quietly skewing the efficiency and stability metrics. Give every
+  `(question, run)` a unique `request_id`, or restart the server between runs; both make each
+  question start cold.
+- **The budget map only grows.** One ID per question over a long-running process accumulates
+  in memory — negligible at this scale but unbounded in principle. A bounded eviction is
+  expected to land with `execute_query`, which shares the same budget.
+
+For a single interactive question none of this applies: pick one ID, keep the profile fixed,
+and let the process own it.
 
 ### History backfill succeeded but expected dates are missing
 

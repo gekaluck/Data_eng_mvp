@@ -20,13 +20,13 @@ from ai_agent.mcp_server.metadata_models import (
     TableSummary,
 )
 from ai_agent.mcp_server.query_explainer import MAX_SQL_CHARS, QueryExplanation
+from ai_agent.mcp_server.query_sampler import MAX_SAMPLE_ROWS, SampleRows
 from ai_agent.mcp_server.transport import (
-    HttpSettings,
     SERVER_NAME,
+    HttpSettings,
     create_mcp_server,
     parse_args,
 )
-
 
 TABLE = "gold.crypto_dbt.daily_snapshot"
 TOOL_NAMES = {
@@ -36,6 +36,7 @@ TOOL_NAMES = {
     "get_lineage",
     "get_model_docs",
     "explain_query",
+    "sample_rows",
 }
 
 
@@ -114,22 +115,67 @@ class FakeQueryExplainer:
             plan_summary="Fragment 0 [SINGLE]",
         )
 
-    def explain_query(self, sql):
-        self.calls.append(sql)
+    def explain_query(self, sql, *, request_id, profile):
+        self.calls.append(
+            {"sql": sql, "request_id": request_id, "profile": profile}
+        )
         if self.failure:
             raise self.failure
         return self.result
 
 
-def _server(fake=None, explainer=None):
+class FakeQuerySampler:
+    def __init__(self):
+        self.calls = []
+        self.failure = None
+
+    def sample_rows(self, table, *, n, request_id, profile):
+        self.calls.append(
+            {
+                "table": table,
+                "n": n,
+                "request_id": request_id,
+                "profile": profile,
+            }
+        )
+        if self.failure:
+            raise self.failure
+        return SampleRows(
+            table=table,
+            columns=("symbol",),
+            rows=(("BTC",),),
+        )
+
+
+def _server(fake=None, explainer=None, sampler=None):
     return create_mcp_server(
         fake or FakeMetadataTools(),
         query_explainer=explainer or FakeQueryExplainer(),
+        query_sampler=sampler or FakeQuerySampler(),
         http=HttpSettings(),
     )
 
 
-def test_registers_exactly_six_read_only_tools_with_structured_schemas():
+def test_partial_query_tool_injection_is_rejected():
+    # Building only the missing tool would give it a separate budget, so one request_id
+    # could spend a full quota in planning and again in sampling. Require both or neither.
+    with pytest.raises(ValueError, match="both or neither"):
+        create_mcp_server(
+            FakeMetadataTools(),
+            query_explainer=FakeQueryExplainer(),
+            query_sampler=None,
+            http=HttpSettings(),
+        )
+    with pytest.raises(ValueError, match="both or neither"):
+        create_mcp_server(
+            FakeMetadataTools(),
+            query_explainer=None,
+            query_sampler=FakeQuerySampler(),
+            http=HttpSettings(),
+        )
+
+
+def test_registers_exactly_seven_read_only_tools_with_structured_schemas():
     server = _server()
 
     tools = asyncio.run(server.list_tools())
@@ -186,7 +232,10 @@ def test_explain_query_returns_the_same_typed_payload_through_mcp():
     sql = f"SELECT * FROM {TABLE}"
 
     result = asyncio.run(
-        _server(explainer=explainer).call_tool("explain_query", {"sql": sql})
+        _server(explainer=explainer).call_tool(
+            "explain_query",
+            {"sql": sql, "request_id": "request-1", "profile": "fast"},
+        )
     )
 
     assert result.isError is False
@@ -199,7 +248,41 @@ def test_explain_query_returns_the_same_typed_payload_through_mcp():
         "diagnostic": None,
     }
     assert json.loads(result.content[0].text) == result.structuredContent
-    assert explainer.calls == [sql]
+    assert explainer.calls == [
+        {"sql": sql, "request_id": "request-1", "profile": "fast"}
+    ]
+
+
+def test_sample_rows_returns_the_same_typed_payload_through_mcp():
+    sampler = FakeQuerySampler()
+
+    result = asyncio.run(
+        _server(sampler=sampler).call_tool(
+            "sample_rows",
+            {
+                "table": TABLE,
+                "n": 1,
+                "request_id": "request-1",
+                "profile": "fast",
+            },
+        )
+    )
+
+    assert result.isError is False
+    assert result.structuredContent == {
+        "table": TABLE,
+        "columns": ["symbol"],
+        "rows": [["BTC"]],
+    }
+    assert json.loads(result.content[0].text) == result.structuredContent
+    assert sampler.calls == [
+        {
+            "table": TABLE,
+            "n": 1,
+            "request_id": "request-1",
+            "profile": "fast",
+        }
+    ]
 
 
 def test_tool_inputs_preserve_bounds_and_enums_in_mcp_schema():
@@ -208,6 +291,8 @@ def test_tool_inputs_preserve_bounds_and_enums_in_mcp_schema():
     snapshot_limit = tools["get_table_snapshots"].inputSchema["properties"]["limit"]
     lineage = tools["get_lineage"].inputSchema["properties"]
     explain_sql = tools["explain_query"].inputSchema["properties"]["sql"]
+    explain = tools["explain_query"].inputSchema["properties"]
+    sample = tools["sample_rows"].inputSchema["properties"]
 
     assert snapshot_limit["minimum"] == 1
     assert snapshot_limit["maximum"] == 100
@@ -215,6 +300,11 @@ def test_tool_inputs_preserve_bounds_and_enums_in_mcp_schema():
     assert lineage["depth"]["maximum"] == 5
     assert explain_sql["minLength"] == 1
     assert explain_sql["maxLength"] == MAX_SQL_CHARS
+    assert explain["request_id"]["maxLength"] == 128
+    assert explain["profile"]["enum"] == ["fast", "thorough"]
+    assert sample["n"]["minimum"] == 1
+    assert sample["n"]["maximum"] == MAX_SAMPLE_ROWS
+    assert sample["profile"]["enum"] == ["fast", "thorough"]
 
 
 @pytest.mark.parametrize(

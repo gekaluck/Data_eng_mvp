@@ -28,8 +28,14 @@ Implemented now:
   default local-host transport
 - scan-free `explain_query`: the existing AST/allow-list guardrail runs first, then Trino
   returns a bounded distributed plan or a typed semantic diagnostic without executing rows
+- one process-local request budget shared by `explain_query` and `sample_rows`: `fast`
+  permits three Trino attempts, `thorough` permits ten, and metadata/local denials are free
+- capped `sample_rows`: accepts only an allow-listed table and `n <= 20`, constructs its own
+  quoted statement, and gives callers no SQL/filter/order surface
+- append-only JSONL sample auditing before return, with request metadata, verdict, timing,
+  columns/row count, and failure code but no raw row values; audit failures fail closed
 
-Not implemented yet: sample/arbitrary query execution, row and scan caps, budget
-accounting, audit logging, or remote authenticated HTTP exposure. Contracts and the full
-guardrail spec remain in
+Not implemented yet: arbitrary query execution, its row/scan/time caps and execution
+statistics, the owned agent loop, or remote authenticated HTTP exposure. Contracts and the
+full guardrail spec remain in
 [`../../docs/ai-agent-architecture.md`](../../docs/ai-agent-architecture.md) §3–§4.

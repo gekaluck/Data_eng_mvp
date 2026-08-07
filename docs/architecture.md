@@ -56,7 +56,7 @@ lands (D027).
       +--> Superset dashboards              |
       |    + SQL Lab / Jupyter              |
       |                                    v
-      +--> MCP metadata + planning server <-+
+      +--> MCP governed query server <-------+
            (stdio + loopback streamable HTTP)
                     |
                     v
@@ -124,12 +124,19 @@ migrated from local Airflow to the cloud.
 - The first transport-agnostic guardrail slice parses the Trino AST, accepts exactly one
   root `SELECT`, resolves physical tables without mistaking CTE names for tables, requires
   `catalog.schema.table`, and checks every dependency against the explicit allow-list
-- One FastMCP registry exposes the five metadata tools plus scan-free `explain_query`
-  through stdio and streamable HTTP. Both transports return the same typed success payloads
-  and the same `{code, message, retryable, hint}` tool errors with MCP `isError` set
+- One FastMCP registry exposes the five metadata tools, scan-free `explain_query`, and
+  capped `sample_rows` through stdio and streamable HTTP. Both transports return the same
+  typed success payloads and the same `{code, message, retryable, hint}` tool errors with
+  MCP `isError` set
 - `explain_query` runs the strict AST/allow-list guardrail before asking Trino for
   `EXPLAIN (TYPE DISTRIBUTED)`. It returns at most 12,000 plan characters and a typed
   semantic verdict; it never constructs `EXPLAIN ANALYZE` or executes caller rows
+- `explain_query` and `sample_rows` share a process-local request budget: three engine
+  calls for `fast`, ten for `thorough`, and no profile switching for one `request_id`.
+  Metadata calls and locally denied requests do not spend a token
+- `sample_rows` accepts only an allow-listed table plus `n <= 20`; the server constructs
+  the quoted `SELECT * ... LIMIT n`, records every accepted attempt to a local JSONL audit,
+  omits raw row values from that record, and fails closed when the audit cannot be written
 - HTTP is stateless JSON on `/mcp` and binds to loopback only. Explicit allowed-host and
   allowed-origin checks protect the local endpoint from DNS rebinding. Remote or multi-user
   exposure is not an implicit configuration change; it requires an authentication decision

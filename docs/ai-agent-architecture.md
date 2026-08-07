@@ -93,8 +93,8 @@ budget charge + full guardrail path).
 | `get_table_snapshots` | `table, limit` | snapshot history `{snapshot_id, committed_at, operation, summary}` — powers freshness caveats in answers | free |
 | `get_lineage` | `model, direction, depth` | upstream/downstream models and sources from dbt manifest | free |
 | `get_model_docs` | `model` | dbt description, column docs, tests defined | free |
-| `sample_rows` | `table, n (≤20)` | `n` rows — exploration sugar with a hard cap, so the guardrails can treat it more cheaply than arbitrary SQL | cheap |
-| `explain_query` | `sql` | plan summary + validation verdict, **no scan** — the loop's pre-execution validity check | cheap |
+| `sample_rows` | `table, n (≤20), request_id, profile` | `n` rows — exploration sugar with a hard cap, so the guardrails can treat it more cheaply than arbitrary SQL | cheap |
+| `explain_query` | `sql, request_id, profile` | plan summary + validation verdict, **no scan** — the loop's pre-execution validity check | cheap |
 | `execute_query` | `sql, max_rows?` | `{columns, rows, truncated: bool, stats: {rows_read, bytes_read, elapsed_ms}, query_id}` | expensive |
 
 Contract notes that matter:
@@ -115,6 +115,17 @@ Contract notes that matter:
   flag. A Trino semantic error is a successful validation operation with `valid: false` and
   a typed diagnostic; access/connection failures remain structured tool errors. Neither the
   tool nor its live smoke check constructs `EXPLAIN ANALYZE` or scans business rows.
+- `sample_rows` is implemented as a deliberately smaller surface than arbitrary SQL (D040).
+  It accepts one allow-listed table and `n` from 1 through 20, then constructs its own fully
+  quoted `SELECT * ... LIMIT n`; callers cannot add SQL, filters, expressions, or ordering.
+  Every accepted attempt is written to the local JSONL audit before returning. Audit
+  records include generated SQL, verdict, timing, columns/row count, and failure code, but
+  never raw business-row values; an unwritable audit fails the call closed.
+- `explain_query` and `sample_rows` require one stable `request_id` plus `fast` or
+  `thorough`. Their shared process-local budget charges immediately before each Trino call:
+  three tokens for `fast`, ten for `thorough`, with no profile switching. Local validation
+  denials and all five metadata tools are free; engine failures consume their attempted
+  token. Restarting the server resets this in-memory state.
 - Iceberg remains schema truth. dbt descriptions fill otherwise-empty live comments, and
   column-set disagreement is returned in `warnings`. `nullable` is `null` when Trino does
   not report a constraint; an empty partition/sort order means the live metadata exposes no
@@ -144,15 +155,15 @@ Three layers with explicitly different jobs (Decision D4). The tool layer is ric
 | Resource group | Engine | Trino resource group: soft memory, concurrency/queue, hourly physical-scan quota | Repeated or concurrent scans that dodge tool-layer caps; the tool layer still owns per-query timeout |
 | Behavioral steering | Prompt | System-prompt scope rules ("only answer from available tables", "always cite SQL") | Nothing — advisory only, and the doc says so |
 
-**Implementation status (2026-08-07, D036–D039).** The first guardrail slice is live:
+**Implementation status (2026-08-07, D036–D040).** The first guardrail slice is live:
 single-statement Trino parsing, a root-`SELECT` whitelist, explicit `SELECT INTO` denial,
 CTE-aware fully qualified physical-table extraction, exact allow-list checks, and structured
 errors. The five catalog metadata tools are live over both MCP stdio and loopback
 streamable HTTP, including allow-list-filtered dbt docs/lineage and fixed-shape Iceberg
-schema, file-stat, and snapshot reads. Scan-free `explain_query` now adds bounded engine
-planning and semantic validation. Row/scan caps, budgets, audit logging, sampling, and
-arbitrary query execution are still unbuilt; the engine controls from D035 remain the only
-execution backstop until those land.
+schema, file-stat, and snapshot reads. Scan-free `explain_query` and capped `sample_rows`
+share the D040 request budget; sampling is audited locally without retaining row values.
+Arbitrary query execution, its row/scan/time caps and stats, and the owned agent loop remain
+unbuilt; the engine controls from D035 still backstop the implemented query tools.
 
 Design stance worth defending: the AST validator is the **primary** control because it is deterministic, unit-testable, and LLM-independent — you can prove properties about it that you cannot prove about a prompt. The engine backstop exists because the validator is code and code has bugs; a `CREATE TABLE` that somehow survives parsing dies at the grant check. Defense in depth, with each layer catching a different failure class.
 

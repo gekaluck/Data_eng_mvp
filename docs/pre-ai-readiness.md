@@ -69,10 +69,11 @@ All four gaps below are now closed by D035:
    empty entry point.
 8. ~~**Put the guardrail tests in CI.**~~ **Complete.** The isolated Python 3.12 job installs
    only the AI requirements and runs Ruff, `compileall`, and `pytest ai_agent/tests`. The
-   current 86 cases cover the allow-list, statement type (including read-only set operations
-   refused without being mislabelled as writes), CTE resolution, table scope, time travel,
-   structured errors, dbt docs/lineage, live-metadata query shapes, and schema drift
-   behavior without starting the lakehouse stack.
+   current 115 cases cover the allow-list, statement type (including read-only set
+   operations refused without being mislabelled as writes), CTE resolution, table scope,
+   time travel, structured errors, dbt docs/lineage, live-metadata query shapes, schema
+   drift, shared/concurrent budgets, capped sampling, audit records, and MCP contracts
+   without starting the lakehouse stack.
 9. **Pin the model IDs, and say where the key lives.** R8 requires model IDs in every eval
    report. Decide the pinned models for both profiles at implementation time (the current
    family is Claude Opus 5 / Sonnet 5 rather than anything the design doc names), and add
@@ -88,10 +89,10 @@ All four gaps below are now closed by D035:
 
 **Current position (2026-08-07): B1-B4 and D7/D8 are complete; the strict guardrail core,
 all five metadata adapters/tools, their MCP stdio plus loopback streamable-HTTP frontends,
-and scan-free `explain_query` are implemented (D036–D039).** Next add the shared
-budget/audit foundation with capped `sample_rows`, then capped `execute_query`, before the
-owned agent loop. C6 belongs in the eval harness, D9 at the provider boundary, and D10 in
-query-result metadata.
+budgeted scan-free `explain_query`, and capped/audited `sample_rows` are implemented
+(D036–D040).** Next add capped `execute_query` with row/scan/time controls, execution stats,
+and the shared budget/audit boundary before the owned agent loop. C6 belongs in the eval
+harness, D9 at the provider boundary, and D10 in query-result metadata.
 
 The ordering below is retained as the original plan and completion trail.
 

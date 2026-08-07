@@ -3,11 +3,11 @@
 from trino.exceptions import TrinoUserError
 
 from ai_agent.mcp_server.allow_list import TableAllowList
+from ai_agent.mcp_server.budget import BudgetProfile, RequestBudgetManager
 from ai_agent.mcp_server.errors import ErrorCode, GuardrailError
 from ai_agent.mcp_server.metadata_models import MetadataModel
 from ai_agent.mcp_server.sql_validator import validate_sql
 from ai_agent.mcp_server.trino_metadata import QueryResult, QueryRunner
-
 
 MAX_SQL_CHARS = 20_000
 MAX_PLAN_CHARS = 12_000
@@ -40,6 +40,7 @@ class QueryExplainer:
         self,
         runner: QueryRunner,
         allow_list: TableAllowList,
+        budget: RequestBudgetManager,
         *,
         max_plan_chars: int = MAX_PLAN_CHARS,
     ) -> None:
@@ -49,10 +50,18 @@ class QueryExplainer:
             raise ValueError("max_plan_chars must be positive.")
         self._runner = runner
         self._allow_list = allow_list
+        self._budget = budget
         self._max_plan_chars = max_plan_chars
 
-    def explain_query(self, sql: str) -> QueryExplanation:
+    def explain_query(
+        self,
+        sql: str,
+        *,
+        request_id: str,
+        profile: BudgetProfile,
+    ) -> QueryExplanation:
         """Return a distributed plan or a semantic diagnostic, never query rows."""
+        request_id, profile = self._budget.validate_request(request_id, profile)
         if isinstance(sql, str) and len(sql) > MAX_SQL_CHARS:
             raise GuardrailError(
                 ErrorCode.PARSE_ERROR,
@@ -60,6 +69,7 @@ class QueryExplainer:
                 hint="Shorten the statement before asking Trino to plan it.",
             )
         validated = validate_sql(sql, self._allow_list)
+        self._budget.charge(request_id, profile)
 
         try:
             result = self._runner.execute(
