@@ -1273,3 +1273,69 @@ uses the same stable code but is non-retryable.
 **Revisit if**: Trino exposes complete nullability/sort expressions to the read-only
 identity, dbt begins emitting reliable row counts, the catalog is large enough to need lazy
 artifact indexes, or a second transport needs a different serialization boundary.
+
+---
+
+## D038 — One Typed Metadata Registry Serves Both MCP Transports
+**Date**: 2026-08-07
+**Status**: accepted
+
+**Decision**: Register the five D037 metadata methods once with the MCP Python SDK and run
+that same FastMCP server over stdio or streamable HTTP. Stdio is the default for a local
+commodity MCP host. HTTP uses the protocol's stateless JSON mode on `/mcp`, binds only to a
+loopback address, and checks explicit loopback `Host` and `Origin` values for DNS-rebinding
+protection.
+
+Each tool advertises bounded input types, typed success/error output schemas, and
+read-only, non-destructive, idempotent annotations. Successful payloads and the existing
+`{code, message, retryable, hint}` error envelope are serialized identically in text and
+MCP `structuredContent`. Expected guardrail failures are tool results with `isError: true`,
+not protocol failures and not successful text that merely contains the word "error".
+Unexpected exceptions remain server errors rather than being converted into a misleading
+guardrail code.
+
+**Why**:
+
+- **Transport parity should be structural.** One registry prevents stdio and HTTP tool
+  names, schemas, annotations, or error handling from drifting into two implementations.
+- **Tool errors are part of the agent loop.** MCP clients can branch on `isError` and the
+  stable code without scraping text or losing a denial behind a JSON-RPC transport error.
+- **The network surface should match the threat model.** Phase A has one trusted local
+  human and no authentication design. Loopback is sufficient for the owned local client;
+  a broad unauthenticated bind would silently introduce a different system.
+- **Streamable HTTP is the current MCP HTTP transport.** Implementing the superseded SSE
+  transport would create compatibility work with no client requirement.
+- **A live protocol check catches a different class of bug than direct unit calls.** The
+  smoke check uses the official MCP client against real stdio and HTTP subprocesses, lists
+  the exact five tools, invokes each against live metadata, and verifies a structured
+  allow-list denial on both paths.
+
+**Consequences**:
+
+- `python -m ai_agent.mcp_server` is a runnable stdio server; passing
+  `--transport streamable-http` serves `http://127.0.0.1:8000/mcp` by default.
+- This slice exposes metadata only. `sample_rows`, `explain_query`, `execute_query`, query
+  budgets, audit records, an LLM call, and any CoinCap access remain absent.
+- Remote, container-to-container, or multi-user HTTP deployment intentionally fails at the
+  bind validation until authentication, origin policy, and the changed threat model are
+  decided explicitly.
+- CI validates registration, schemas, annotations, bounded inputs, serialization, local
+  HTTP settings, and CLI selection without a live lakehouse. The runbook retains a separate
+  opt-in parity smoke against Trino and published dbt artifacts.
+
+**Alternatives considered**:
+
+- **Separate stdio and HTTP wrappers**: rejected because parity would depend on duplicated
+  registration and serialization code.
+- **HTTP only**: rejected because the staged A1 client explicitly needs commodity-host
+  stdio, while A2 needs an HTTP boundary.
+- **Legacy SSE**: rejected because streamable HTTP supersedes it in the current protocol
+  and SDK.
+- **Bind `0.0.0.0` without authentication**: rejected because it broadens the threat model
+  and makes a local metadata endpoint reachable from unintended peers.
+- **Raise every domain denial as a protocol exception**: rejected because the caller loses
+  the structured tool-level signal needed to refuse or correct a request.
+
+**Revisit if**: A remote or multi-user client is approved, the owned service moves to a
+separate container, server-initiated MCP features require stateful/non-JSON HTTP sessions,
+or MCP 2 becomes the supported stable SDK line.

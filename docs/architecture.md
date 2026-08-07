@@ -51,10 +51,16 @@ lands (D027).
   Gold (Iceberg tables in MinIO, JDBC catalog metadata in Postgres)
       |
       v
-  Trino SQL serving boundary
-      |
-      v
-  Superset dashboards + SQL Lab / Jupyter debugging
+  Trino SQL serving boundary          dbt artifacts
+      |                                    |
+      +--> Superset dashboards              |
+      |    + SQL Lab / Jupyter              |
+      |                                    v
+      +--> MCP metadata server <------------+
+           (stdio + loopback streamable HTTP)
+                    |
+                    v
+              local MCP clients
 ```
 
 Everything from Bronze down runs over the **range the sync discovered**, not a fixed
@@ -118,6 +124,12 @@ migrated from local Airflow to the cloud.
 - The first transport-agnostic guardrail slice parses the Trino AST, accepts exactly one
   root `SELECT`, resolves physical tables without mistaking CTE names for tables, requires
   `catalog.schema.table`, and checks every dependency against the explicit allow-list
+- One FastMCP registry exposes exactly the five implemented metadata tools through stdio
+  and streamable HTTP. Both transports return the same typed success payloads and the same
+  `{code, message, retryable, hint}` tool errors with MCP `isError` set
+- HTTP is stateless JSON on `/mcp` and binds to loopback only. Explicit allowed-host and
+  allowed-origin checks protect the local endpoint from DNS rebinding. Remote or multi-user
+  exposure is not an implicit configuration change; it requires an authentication decision
 - AI runtime and test dependencies live under `ai_agent/`; they are installed by an
   isolated CI job and are not part of the Airflow image (D036)
 
@@ -257,6 +269,7 @@ The gold layer optimizes for the reader, not the writer.
 | Compute        | PySpark 3.5.x       | Local / Docker |
 | Query engine   | Trino 477           | Docker         |
 | BI / serving   | Superset 6.0        | Docker         |
+| AI tool protocol | MCP Python SDK 1.x | Host / isolated runtime |
 | Storage        | MinIO               | Docker         |
 | Table format   | Iceberg 1.5.x       | Spark plugin   |
 | Catalog        | JDBC                | Postgres       |

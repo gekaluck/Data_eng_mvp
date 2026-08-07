@@ -14,14 +14,14 @@ mislead you.
 | How do I run this? | [`../README.md`](../README.md) | Quick start, stack overview, roadmap |
 | How is it built, and why that shape? | [`architecture.md`](architecture.md) | Current design. Authoritative |
 | Why was X decided? | [`decisions.md`](decisions.md) | Dated, append-only. Read the newest entry on a topic; earlier ones may be superseded |
-| What broke, and what did it teach us? | [`incidents.md`](incidents.md) | I1–I19, plus the hardening items they produced |
+| What broke, and what did it teach us? | [`incidents.md`](incidents.md) | I1–I20, plus the hardening items they produced |
 | How did the project get here? | [`evolution.md`](evolution.md) | The narrative spine, and the draft for a future write-up |
 | How do I operate it / debug a symptom? | [`runbook.md`](runbook.md) | First checks by symptom |
 | How does the daily cloud capture work? | [`autonomous-daily-capture.md`](autonomous-daily-capture.md) | GitHub Actions → S3 |
 | How does Superset serve the data? | [`superset.md`](superset.md) | Serving profile, bootstrap |
 | How do I browse the lakehouse tables? | [`table_browser.md`](table_browser.md) | Jupyter/Trino exploration |
-| What is the AI-agent layer going to be? | [`ai-agent-architecture.md`](ai-agent-architecture.md) | **Design authority** for the next phase |
-| What must be done before that phase starts? | [`pre-ai-readiness.md`](pre-ai-readiness.md) | Punch list against the running system, checked 2026-08-06 |
+| What is the AI-agent layer and what is implemented? | [`ai-agent-architecture.md`](ai-agent-architecture.md) | **Design authority** and current implementation boundary |
+| What remains before the agent loop? | [`pre-ai-readiness.md`](pre-ai-readiness.md) | Completion trail and punch list, checked 2026-08-07 |
 | How should an agent work in this repo? | [`../CLAUDE.md`](../CLAUDE.md) | Operating rules — branching, scope, questions. [`../AGENTS.md`](../AGENTS.md) points here for non-Claude agents |
 
 **Historical, not current** — everything under [`historical/`](historical/) describes the
@@ -106,9 +106,9 @@ every coin at once.
 
 The platform is stable. The active track is the **AI-agent layer** —
 [`ai-agent-architecture.md`](ai-agent-architecture.md) is the design authority, implemented
-under [`../ai_agent/`](../ai_agent). Its first guardrail slice reads a strict table
-allow-list and validates Trino SQL without connecting to the engine. The layer reads Gold
-only through that allow-list,
+under [`../ai_agent/`](../ai_agent). Its strict guardrail validates Trino SQL against a
+table allow-list, and five read-only metadata tools now run over MCP stdio and loopback
+streamable HTTP. The layer reads Gold only through that allow-list,
 which is why Gold's column-level descriptions in `dbt/models/gold/schema.yml` matter more
 than they look: they are the semantic layer an agent reasons over.
 
@@ -116,8 +116,9 @@ Hardening is finished: H5 landed with D033, so Bronze now records when each snap
 fetched and the open-items table in [`incidents.md`](incidents.md) is empty. The same pass
 found the pipeline running a day behind — GitHub's cron drift had outgrown the
 orchestrator's one-hour buffer (I20) — and moved it to 05:30 UTC (D034). The Trino/dbt
-prerequisites and first guardrail are complete; the remaining decisions and implementation
-order are tracked in [`pre-ai-readiness.md`](pre-ai-readiness.md).
+prerequisites, guardrail core, metadata adapters, and MCP transport slice are complete.
+Guarded analytical query execution, budgets/audit, the agent loop, and eval work remain;
+their ordering is tracked in [`pre-ai-readiness.md`](pre-ai-readiness.md).
 
 ---
 

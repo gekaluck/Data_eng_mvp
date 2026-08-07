@@ -1,9 +1,9 @@
 # `ai_agent/` — AI-Agent Layer (Phase A)
 
-> **Status: guardrails plus metadata core.** The transport-neutral MCP-server core now
-> implements strict SQL validation and the five read-only catalog tools backed by published
-> dbt artifacts and live Trino/Iceberg metadata. MCP transports, query execution caps, and
-> the agent loop remain next.
+> **Status: runnable metadata MCP layer.** The same five governed catalog tools are exposed
+> over MCP stdio and loopback streamable HTTP, backed by published dbt artifacts and live
+> Trino/Iceberg metadata. Query execution caps, budgets/audit, and the agent loop remain
+> next.
 
 ## Purpose
 
@@ -49,6 +49,24 @@ The `AI guardrail tests` CI job runs the same dependency install, lint, compile,
 checks with fixture-backed metadata adapters, without starting Docker services or contacting
 Trino or an LLM provider. A separate opt-in, read-only live smoke command is documented in
 the runbook.
+
+## Run the metadata server
+
+The default is MCP stdio, suitable for a local MCP host:
+
+```bash
+python -m ai_agent.mcp_server
+```
+
+For a local HTTP client, start the same tool registry over streamable HTTP:
+
+```bash
+python -m ai_agent.mcp_server --transport streamable-http
+```
+
+The endpoint is `http://127.0.0.1:8000/mcp`. The HTTP frontend deliberately rejects
+non-loopback binds; remote or multi-user exposure requires a separate authentication and
+threat-model decision. See the runbook for the official-client parity smoke check.
 
 ## Building here
 

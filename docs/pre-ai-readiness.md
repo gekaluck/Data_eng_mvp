@@ -1,8 +1,9 @@
 # Pre-AI-Layer Readiness
 
-What the platform still needs before Phase A of the AI-agent layer
-([`ai-agent-architecture.md`](ai-agent-architecture.md)) starts. That document is the design
-authority; this one is a punch list against the *running system*, checked on 2026-08-06.
+The platform prerequisites and implementation gates for Phase A of the AI-agent layer.
+[`ai-agent-architecture.md`](ai-agent-architecture.md) is the design authority; this one is
+the completion trail and remaining punch list against the *running system*, checked on
+2026-08-07.
 
 The design's own boundary (§2.2) is that the agent layer **extends, never modifies** the
 pipeline, and that the only platform-side additions are configuration. The §B additions are
@@ -68,7 +69,7 @@ All four gaps below are now closed by D035:
    empty entry point.
 8. ~~**Put the guardrail tests in CI.**~~ **Complete.** The isolated Python 3.12 job installs
    only the AI requirements and runs Ruff, `compileall`, and `pytest ai_agent/tests`. The
-   current 50+ cases cover the allow-list, statement type, CTE resolution, table scope, time
+   current 67 cases cover the allow-list, statement type, CTE resolution, table scope, time
    travel, structured errors, dbt docs/lineage, live-metadata query shapes, and schema drift
    behavior without starting the lakehouse stack.
 9. **Pin the model IDs, and say where the key lives.** R8 requires model IDs in every eval
@@ -84,10 +85,12 @@ All four gaps below are now closed by D035:
 
 ## Suggested order
 
-**Current position (2026-08-06): B1-B4 and D7/D8 are complete; the strict guardrail core and
-all five metadata adapters/tools are implemented (D036–D037).** Next expose those methods
-through MCP stdio and streamable-HTTP transports. C6 belongs in the eval harness, D9 at the
-provider boundary, and D10 in query-result metadata.
+**Current position (2026-08-07): B1-B4 and D7/D8 are complete; the strict guardrail core,
+all five metadata adapters/tools, and their MCP stdio plus loopback streamable-HTTP
+frontends are implemented (D036–D038).** Next add the guarded query path in small slices:
+`explain_query` and `sample_rows`, then capped/audited `execute_query`, before the owned
+agent loop. C6 belongs in the eval harness, D9 at the provider boundary, and D10 in
+query-result metadata.
 
 The ordering below is retained as the original plan and completion trail.
 

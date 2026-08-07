@@ -11,8 +11,9 @@ concerns: explicit date propagation, separated regular vs. backfill flows, retri
 idempotent single-date replays, data tests in the orchestrated path, and two parallel
 Gold implementations (Spark and dbt) kept side by side for comparison.
 
-> **What's next:** an AI-agent layer (MCP server + text-to-analytics agent over the Gold
-> layer) is designed and about to be built as a new module. See the
+> **What's next:** the AI-agent layer now exposes its five governed Gold metadata tools
+> through MCP stdio and loopback streamable HTTP. Guarded analytical query execution and
+> the owned text-to-analytics loop are next. See the
 > [Roadmap](#roadmap) and [`docs/ai-agent-architecture.md`](docs/ai-agent-architecture.md).
 
 ---
@@ -42,6 +43,8 @@ flowchart TB
 
     TRINO["Trino<br/>SQL query engine"]
     SUPERSET["Superset<br/>dashboards & exploration"]
+    MCP["MCP metadata server<br/>stdio + streamable HTTP"]
+    MCPCLIENT["MCP clients"]
 
     API -->|ingest| BRONZE
     ROOT -.orchestrates.-> SPARK
@@ -53,6 +56,9 @@ flowchart TB
     DBT --- TRINO
     TRINO --- CATALOG
     TRINO --> SUPERSET
+    TRINO -->|fixed-shape metadata reads| MCP
+    DBT -.published artifacts.-> MCP
+    MCP --> MCPCLIENT
     SILVER -.metadata.- CATALOG
     GOLD -.metadata.- CATALOG
 ```
@@ -196,7 +202,7 @@ the ignored `dbt/artifacts/` runtime directory for the AI metadata adapter. See
 | [`tests/`](tests)       | DAG-integrity, schema, and transform unit tests (pytest)        |
 | [`notebooks/`](notebooks)| JupyterLab exploration of the lakehouse                        |
 | [`superset/`](superset)   | Reproducible Superset image, configuration, and dashboard assets |
-| [`ai_agent/`](ai_agent)   | Isolated Phase A agent code, dependencies, and guardrail tests   |
+| [`ai_agent/`](ai_agent)   | Phase A guardrails, metadata tools, MCP transports, and tests    |
 | [`scripts/`](scripts)   | PowerShell helpers for running the stack                        |
 | [`docs/`](docs)         | Architecture, decisions, runbook, milestones                    |
 
@@ -213,7 +219,7 @@ the ignored `dbt/artifacts/` runtime directory for the AI metadata adapter. See
 - [table_browser.md](docs/table_browser.md) — exploring tables via Trino / Jupyter / dbt
 - [superset.md](docs/superset.md) — serving-layer setup, dashboard assets, and availability semantics
 - [historical/milestones.md](docs/historical/milestones.md) — how the project was built up, milestone by milestone
-- [ai-agent-architecture.md](docs/ai-agent-architecture.md) — design for the upcoming AI-agent layer
+- [ai-agent-architecture.md](docs/ai-agent-architecture.md) — design authority and implementation status for the AI-agent layer
 - [dbt/README.md](dbt/README.md) — dbt-specific setup and usage
 
 ---
@@ -224,10 +230,12 @@ The platform above is stable. The next track adds an **AI-agent layer** on top o
 Gold layer, designed in [`docs/ai-agent-architecture.md`](docs/ai-agent-architecture.md) (the source
 of truth for that work). It extends the platform without modifying any existing pipeline:
 
-- **Phase A — MCP server + text-to-analytics agent.** A transport-agnostic MCP server
-  exposes governed, read-only Gold-layer tools (schema, lineage, dbt docs, guarded
-  `execute_query`); a bounded-state-machine agent turns natural-language questions into
-  validated SQL with a confidence gate that refuses rather than guesses. Includes an eval
+- **Phase A — MCP server + text-to-analytics agent.** The MCP server currently exposes
+  governed, read-only Gold metadata (schema, snapshots, lineage, and dbt docs) over stdio
+  and loopback streamable HTTP. The remaining work adds guarded `sample_rows`,
+  `explain_query`, and capped `execute_query`; a bounded-state-machine agent then turns
+  natural-language questions into validated SQL with a confidence gate that refuses rather
+  than guesses. Includes an eval
   harness scored on execution accuracy.
 - **Phase B — RAG over catalog & lineage docs.** An Airflow DAG that chunks and embeds
   dbt/Iceberg catalog metadata into a vector store, surfaced to the agent as a
@@ -235,8 +243,9 @@ of truth for that work). It extends the platform without modifying any existing 
 - **Phase C — Feature-store bridge (Feast).** A thin Feast bridge reading Gold Iceberg
   tables through Trino, with feature definitions derived from existing dbt models (sketch).
 
-The scaffolding for Phase A lives under [`ai_agent/`](ai_agent) — a README stub today,
-implementation to follow.
+The Phase A implementation lives under [`ai_agent/`](ai_agent). Its metadata transport
+slice is runnable today; analytical query execution, budgets/audit, and the agent loop
+remain deliberately separate follow-up slices.
 
 ---
 

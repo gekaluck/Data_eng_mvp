@@ -270,7 +270,7 @@ the data for weeks.
 
 ---
 
-## Where it stands (2026-08-06)
+## Where it stands (2026-08-07)
 
 107 distinct dates over ~198 calendar days, all three serving models in step, both Gold
 implementations agreeing on every date, and no fabricated flat days left. Hardening is
@@ -293,5 +293,9 @@ lineage, while the restricted Trino identity reads live Iceberg columns, snapsho
 file statistics through fixed query shapes. The first live reconciliation caught two kinds
 of drift immediately—the weekly model's physical alias was wrong in the allow-list, and two
 live coverage columns lacked dbt descriptions—and both were corrected before transport.
-The agent still cannot execute an analytical query, but it can now acquire trustworthy
-planning context once MCP transports expose this core.
+D038 then put one typed registry behind both intended MCP frontends: stdio for a commodity
+local host and stateless streamable HTTP for the owned client path. The HTTP surface stays
+on loopback with DNS-rebinding checks, and the official client smoke proves that both paths
+discover and invoke the same five tools, including the same structured denial. The agent
+still cannot execute an analytical query, but an MCP client can now acquire trustworthy
+planning context without bypassing the allow-list.
