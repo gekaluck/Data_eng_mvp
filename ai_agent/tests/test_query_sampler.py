@@ -154,6 +154,28 @@ def test_local_denial_is_audited_without_spending_budget(
     assert audit.entries[0].failure_code == code
 
 
+def test_oversized_denied_table_is_truncated_in_the_audit(allow_list):
+    runner = FakeRunner()
+    budget = RequestBudgetManager()
+    audit = RecordingAudit()
+    sampler = make_sampler(runner, allow_list, budget, audit)
+    oversized = "gold.crypto_dbt." + "x" * 5000
+
+    with pytest.raises(GuardrailError) as raised:
+        sampler.sample_rows(
+            oversized,
+            n=1,
+            request_id="request-1",
+            profile="fast",
+        )
+
+    assert raised.value.code == ErrorCode.TABLE_NOT_ALLOWED
+    recorded = audit.entries[0].table
+    assert len(recorded) <= 200 + len("...(truncated)")
+    assert recorded.endswith("...(truncated)")
+    assert budget.status("request-1", "fast").used == 0
+
+
 def test_budget_denial_is_audited_before_trino(allow_list):
     runner = FakeRunner()
     budget = RequestBudgetManager()

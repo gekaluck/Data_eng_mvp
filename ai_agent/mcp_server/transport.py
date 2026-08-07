@@ -43,6 +43,9 @@ from ai_agent.mcp_server.trino_metadata import (
 )
 
 SERVER_NAME = "crypto-lakehouse-metadata"
+# A fully qualified allow-listed name is short; bound the input so an oversized value
+# cannot reach the sampler's audit sink from the MCP boundary.
+MAX_TABLE_NAME_CHARS = 512
 DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 8000
 DEFAULT_HTTP_PATH = "/mcp"
@@ -178,10 +181,13 @@ def create_mcp_server(
 ) -> FastMCP:
     """Create one MCP server whose tools are identical on both transports."""
     tools = metadata_tools or build_metadata_tools()
-    if query_explainer is None or query_sampler is None:
-        built_explainer, built_sampler = build_query_tools()
-        query_explainer = query_explainer or built_explainer
-        query_sampler = query_sampler or built_sampler
+    if (query_explainer is None) != (query_sampler is None):
+        raise ValueError(
+            "query_explainer and query_sampler must be supplied together so they "
+            "share one request budget; pass both or neither."
+        )
+    if query_explainer is None:
+        query_explainer, query_sampler = build_query_tools()
     settings = http or HttpSettings.from_env()
     transport_security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
@@ -338,7 +344,11 @@ def register_query_tools(
     def sample_rows(
         table: Annotated[
             str,
-            Field(min_length=1, description="Fully qualified allow-listed table."),
+            Field(
+                min_length=1,
+                max_length=MAX_TABLE_NAME_CHARS,
+                description="Fully qualified allow-listed table.",
+            ),
         ],
         n: Annotated[
             int,

@@ -19,6 +19,9 @@ from ai_agent.mcp_server.metadata_models import MetadataModel
 from ai_agent.mcp_server.trino_metadata import QueryResult, QueryRunner
 
 MAX_SAMPLE_ROWS = 20
+# Denied attempts consume no budget, so the caller-controlled table value must be bounded
+# before it is copied into the append-only audit log or it could grow the file without limit.
+MAX_AUDIT_TABLE_CHARS = 200
 
 
 class SampleRows(MetadataModel):
@@ -62,7 +65,7 @@ class QuerySampler:
         """Return at most 20 rows, recording every accepted tool attempt."""
         request_id, profile = self._budget.validate_request(request_id, profile)
         started = self._timer()
-        audit_table = table if isinstance(table, str) else repr(table)
+        audit_table = self._audit_table(table)
         normalized_table: str | None = None
         sql: str | None = None
         validation_verdict = "not_run"
@@ -118,6 +121,14 @@ class QuerySampler:
                 hint="Call list_tables and use a fully qualified returned table name.",
             )
         return normalized
+
+    @staticmethod
+    def _audit_table(table: object) -> str:
+        """Bound the caller-controlled table value recorded for denied attempts."""
+        text = table if isinstance(table, str) else repr(table)
+        if len(text) > MAX_AUDIT_TABLE_CHARS:
+            return text[:MAX_AUDIT_TABLE_CHARS] + "...(truncated)"
+        return text
 
     @staticmethod
     def _validate_limit(n: int) -> None:

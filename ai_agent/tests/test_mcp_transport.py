@@ -156,6 +156,25 @@ def _server(fake=None, explainer=None, sampler=None):
     )
 
 
+def test_partial_query_tool_injection_is_rejected():
+    # Building only the missing tool would give it a separate budget, so one request_id
+    # could spend a full quota in planning and again in sampling. Require both or neither.
+    with pytest.raises(ValueError, match="both or neither"):
+        create_mcp_server(
+            FakeMetadataTools(),
+            query_explainer=FakeQueryExplainer(),
+            query_sampler=None,
+            http=HttpSettings(),
+        )
+    with pytest.raises(ValueError, match="both or neither"):
+        create_mcp_server(
+            FakeMetadataTools(),
+            query_explainer=None,
+            query_sampler=FakeQuerySampler(),
+            http=HttpSettings(),
+        )
+
+
 def test_registers_exactly_seven_read_only_tools_with_structured_schemas():
     server = _server()
 
