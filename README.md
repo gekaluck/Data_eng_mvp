@@ -11,9 +11,9 @@ concerns: explicit date propagation, separated regular vs. backfill flows, retri
 idempotent single-date replays, data tests in the orchestrated path, and two parallel
 Gold implementations (Spark and dbt) kept side by side for comparison.
 
-> **What's next:** the AI-agent layer now exposes its five governed Gold metadata tools
-> through MCP stdio and loopback streamable HTTP. Guarded analytical query execution and
-> the owned text-to-analytics loop are next. See the
+> **What's next:** the AI-agent layer now exposes five governed Gold metadata tools plus
+> scan-free `explain_query` through MCP stdio and loopback streamable HTTP. Capped/audited
+> data reads and the owned text-to-analytics loop are next. See the
 > [Roadmap](#roadmap) and [`docs/ai-agent-architecture.md`](docs/ai-agent-architecture.md).
 
 ---
@@ -43,7 +43,7 @@ flowchart TB
 
     TRINO["Trino<br/>SQL query engine"]
     SUPERSET["Superset<br/>dashboards & exploration"]
-    MCP["MCP metadata server<br/>stdio + streamable HTTP"]
+    MCP["MCP server<br/>metadata + scan-free planning"]
     MCPCLIENT["MCP clients"]
 
     API -->|ingest| BRONZE
@@ -232,8 +232,9 @@ of truth for that work). It extends the platform without modifying any existing 
 
 - **Phase A — MCP server + text-to-analytics agent.** The MCP server currently exposes
   governed, read-only Gold metadata (schema, snapshots, lineage, and dbt docs) over stdio
-  and loopback streamable HTTP. The remaining work adds guarded `sample_rows`,
-  `explain_query`, and capped `execute_query`; a bounded-state-machine agent then turns
+  and loopback streamable HTTP, plus bounded scan-free SQL planning through
+  `explain_query`. The remaining work adds audited `sample_rows` and capped
+  `execute_query`; a bounded-state-machine agent then turns
   natural-language questions into validated SQL with a confidence gate that refuses rather
   than guesses. Includes an eval
   harness scored on execution accuracy.

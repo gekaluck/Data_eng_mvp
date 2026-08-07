@@ -107,8 +107,8 @@ every coin at once.
 The platform is stable. The active track is the **AI-agent layer** —
 [`ai-agent-architecture.md`](ai-agent-architecture.md) is the design authority, implemented
 under [`../ai_agent/`](../ai_agent). Its strict guardrail validates Trino SQL against a
-table allow-list, and five read-only metadata tools now run over MCP stdio and loopback
-streamable HTTP. The layer reads Gold only through that allow-list,
+table allow-list; five read-only metadata tools and scan-free `explain_query` now run over
+MCP stdio and loopback streamable HTTP. The layer reads Gold only through that allow-list,
 which is why Gold's column-level descriptions in `dbt/models/gold/schema.yml` matter more
 than they look: they are the semantic layer an agent reasons over.
 
@@ -116,9 +116,9 @@ Hardening is finished: H5 landed with D033, so Bronze now records when each snap
 fetched and the open-items table in [`incidents.md`](incidents.md) is empty. The same pass
 found the pipeline running a day behind — GitHub's cron drift had outgrown the
 orchestrator's one-hour buffer (I20) — and moved it to 05:30 UTC (D034). The Trino/dbt
-prerequisites, guardrail core, metadata adapters, and MCP transport slice are complete.
-Guarded analytical query execution, budgets/audit, the agent loop, and eval work remain;
-their ordering is tracked in [`pre-ai-readiness.md`](pre-ai-readiness.md).
+prerequisites, guardrail core, metadata adapters, MCP transports, and scan-free engine
+planning are complete. Audited/capped analytical reads, the agent loop, and eval work
+remain; their ordering is tracked in [`pre-ai-readiness.md`](pre-ai-readiness.md).
 
 ---
 

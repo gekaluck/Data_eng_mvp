@@ -56,7 +56,7 @@ lands (D027).
       +--> Superset dashboards              |
       |    + SQL Lab / Jupyter              |
       |                                    v
-      +--> MCP metadata server <------------+
+      +--> MCP metadata + planning server <-+
            (stdio + loopback streamable HTTP)
                     |
                     v
@@ -124,9 +124,12 @@ migrated from local Airflow to the cloud.
 - The first transport-agnostic guardrail slice parses the Trino AST, accepts exactly one
   root `SELECT`, resolves physical tables without mistaking CTE names for tables, requires
   `catalog.schema.table`, and checks every dependency against the explicit allow-list
-- One FastMCP registry exposes exactly the five implemented metadata tools through stdio
-  and streamable HTTP. Both transports return the same typed success payloads and the same
-  `{code, message, retryable, hint}` tool errors with MCP `isError` set
+- One FastMCP registry exposes the five metadata tools plus scan-free `explain_query`
+  through stdio and streamable HTTP. Both transports return the same typed success payloads
+  and the same `{code, message, retryable, hint}` tool errors with MCP `isError` set
+- `explain_query` runs the strict AST/allow-list guardrail before asking Trino for
+  `EXPLAIN (TYPE DISTRIBUTED)`. It returns at most 12,000 plan characters and a typed
+  semantic verdict; it never constructs `EXPLAIN ANALYZE` or executes caller rows
 - HTTP is stateless JSON on `/mcp` and binds to loopback only. Explicit allowed-host and
   allowed-origin checks protect the local endpoint from DNS rebinding. Remote or multi-user
   exposure is not an implicit configuration change; it requires an authentication decision

@@ -170,3 +170,10 @@ def test_dbapi_runner_reads_local_environment_without_user_override(monkeypatch)
     assert runner._port == 8443
     assert runner._http_scheme == "https"
     assert runner._request_timeout_seconds == 4.5
+    assert runner._source == "ai-metadata-tools"
+
+
+def test_dbapi_runner_accepts_a_fixed_tool_source():
+    runner = TrinoDbApiRunner.from_env(source="ai-explain-query")
+
+    assert runner._source == "ai-explain-query"

@@ -1,4 +1,4 @@
-"""MCP frontends for the governed, transport-neutral metadata core."""
+"""MCP frontends for governed metadata and scan-free query planning."""
 
 import argparse
 import json
@@ -24,6 +24,11 @@ from ai_agent.mcp_server.metadata_models import (
     TableSummary,
 )
 from ai_agent.mcp_server.metadata_tools import MetadataTools
+from ai_agent.mcp_server.query_explainer import (
+    MAX_SQL_CHARS,
+    QueryExplainer,
+    QueryExplanation,
+)
 from ai_agent.mcp_server.trino_metadata import (
     IcebergMetadataAdapter,
     TrinoDbApiRunner,
@@ -73,6 +78,10 @@ class LineageOutput(RootModel[LineageResult | ToolErrorPayload]):
 
 class ModelDocsOutput(RootModel[ModelDocs | ToolErrorPayload]):
     """Advertised output schema for get_model_docs."""
+
+
+class ExplainQueryOutput(RootModel[QueryExplanation | ToolErrorPayload]):
+    """Advertised output schema for explain_query."""
 
 
 READ_ONLY_ANNOTATIONS = ToolAnnotations(
@@ -130,13 +139,24 @@ def build_metadata_tools() -> MetadataTools:
     )
 
 
+def build_query_explainer() -> QueryExplainer:
+    """Compose the scan-free planner with the same allow-list and Trino identity."""
+    allow_list = TableAllowList.from_file()
+    return QueryExplainer(
+        TrinoDbApiRunner.from_env(source="ai-explain-query"),
+        allow_list,
+    )
+
+
 def create_mcp_server(
     metadata_tools: MetadataTools | None = None,
     *,
+    query_explainer: QueryExplainer | None = None,
     http: HttpSettings | None = None,
 ) -> FastMCP:
     """Create one MCP server whose tools are identical on both transports."""
     tools = metadata_tools or build_metadata_tools()
+    explainer = query_explainer or build_query_explainer()
     settings = http or HttpSettings.from_env()
     transport_security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
@@ -150,8 +170,9 @@ def create_mcp_server(
     server = FastMCP(
         SERVER_NAME,
         instructions=(
-            "Read-only planning metadata for the explicitly allow-listed dbt Gold "
-            "catalog. This server does not execute caller-supplied SQL."
+            "Read-only metadata and scan-free SQL planning for the explicitly "
+            "allow-listed dbt Gold catalog. This server does not execute "
+            "caller-supplied SQL."
         ),
         host=settings.host,
         port=settings.port,
@@ -161,6 +182,7 @@ def create_mcp_server(
         transport_security=transport_security,
     )
     register_metadata_tools(server, tools)
+    register_query_tools(server, explainer)
     return server
 
 
@@ -244,6 +266,27 @@ def register_metadata_tools(server: FastMCP, tools: MetadataTools) -> None:
         return _invoke(lambda: tools.get_model_docs(model))
 
 
+def register_query_tools(server: FastMCP, explainer: QueryExplainer) -> None:
+    """Register scan-free query planning separately from future execution tools."""
+
+    @server.tool(annotations=READ_ONLY_ANNOTATIONS)
+    def explain_query(
+        sql: Annotated[
+            str,
+            Field(
+                min_length=1,
+                max_length=MAX_SQL_CHARS,
+                description=(
+                    "One fully qualified, allow-listed Trino SELECT to validate and "
+                    "plan without execution."
+                ),
+            ),
+        ],
+    ) -> Annotated[CallToolResult, ExplainQueryOutput]:
+        """Validate SQL and return a bounded distributed plan without scanning rows."""
+        return _invoke(lambda: explainer.explain_query(sql))
+
+
 def _invoke(operation: Callable[[], PayloadT]) -> CallToolResult:
     try:
         return _result(operation(), is_error=False)
@@ -269,10 +312,15 @@ def run_server(
     transport: Transport,
     *,
     metadata_tools: MetadataTools | None = None,
+    query_explainer: QueryExplainer | None = None,
     http: HttpSettings | None = None,
 ) -> None:
     """Run the same registered server over stdio or local Streamable HTTP."""
-    server = create_mcp_server(metadata_tools, http=http)
+    server = create_mcp_server(
+        metadata_tools,
+        query_explainer=query_explainer,
+        http=http,
+    )
     server.run(transport=transport)
 
 

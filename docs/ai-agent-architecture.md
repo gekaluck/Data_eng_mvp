@@ -108,6 +108,13 @@ Contract notes that matter:
   artifact pair and expose only allow-listed Gold models as queryable. `get_table_schema`
   and `get_table_snapshots` issue adapter-owned, fixed-shape statements as the restricted
   Trino `agent`; they do not accept SQL from a caller.
+- `explain_query` is implemented as the first caller-SQL MCP tool (D039). It accepts at most
+  20,000 characters, applies the same single-`SELECT` AST and physical-table allow-list
+  before Trino, and then requests `EXPLAIN (TYPE DISTRIBUTED)` as the restricted `agent`.
+  Successful planning returns at most 12,000 plan characters plus an explicit truncation
+  flag. A Trino semantic error is a successful validation operation with `valid: false` and
+  a typed diagnostic; access/connection failures remain structured tool errors. Neither the
+  tool nor its live smoke check constructs `EXPLAIN ANALYZE` or scans business rows.
 - Iceberg remains schema truth. dbt descriptions fill otherwise-empty live comments, and
   column-set disagreement is returned in `warnings`. `nullable` is `null` when Trino does
   not report a constraint; an empty partition/sort order means the live metadata exposes no
@@ -137,14 +144,15 @@ Three layers with explicitly different jobs (Decision D4). The tool layer is ric
 | Resource group | Engine | Trino resource group: soft memory, concurrency/queue, hourly physical-scan quota | Repeated or concurrent scans that dodge tool-layer caps; the tool layer still owns per-query timeout |
 | Behavioral steering | Prompt | System-prompt scope rules ("only answer from available tables", "always cite SQL") | Nothing — advisory only, and the doc says so |
 
-**Implementation status (2026-08-07, D036–D038).** The first guardrail slice is live:
+**Implementation status (2026-08-07, D036–D039).** The first guardrail slice is live:
 single-statement Trino parsing, a root-`SELECT` whitelist, explicit `SELECT INTO` denial,
 CTE-aware fully qualified physical-table extraction, exact allow-list checks, and structured
 errors. The five catalog metadata tools are live over both MCP stdio and loopback
 streamable HTTP, including allow-list-filtered dbt docs/lineage and fixed-shape Iceberg
-schema, file-stat, and snapshot reads. Row/scan caps, budgets, audit logging, and arbitrary
-query execution are still unbuilt; the engine controls from D035 remain the only execution
-backstop until those land.
+schema, file-stat, and snapshot reads. Scan-free `explain_query` now adds bounded engine
+planning and semantic validation. Row/scan caps, budgets, audit logging, sampling, and
+arbitrary query execution are still unbuilt; the engine controls from D035 remain the only
+execution backstop until those land.
 
 Design stance worth defending: the AST validator is the **primary** control because it is deterministic, unit-testable, and LLM-independent — you can prove properties about it that you cannot prove about a prompt. The engine backstop exists because the validator is code and code has bugs; a `CREATE TABLE` that somehow survives parsing dies at the grant check. Defense in depth, with each layer catching a different failure class.
 

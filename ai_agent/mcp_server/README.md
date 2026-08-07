@@ -26,8 +26,10 @@ Implemented now:
   `isError: true` tool failures that clients can inspect and recover from
 - loopback-only HTTP binding with DNS-rebinding host/origin checks; stdio remains the
   default local-host transport
+- scan-free `explain_query`: the existing AST/allow-list guardrail runs first, then Trino
+  returns a bounded distributed plan or a typed semantic diagnostic without executing rows
 
-Not implemented yet: query/sample/explain execution, row and scan caps, budget accounting,
-audit logging, or remote authenticated HTTP exposure. Contracts and the full guardrail spec
-remain in
+Not implemented yet: sample/arbitrary query execution, row and scan caps, budget
+accounting, audit logging, or remote authenticated HTTP exposure. Contracts and the full
+guardrail spec remain in
 [`../../docs/ai-agent-architecture.md`](../../docs/ai-agent-architecture.md) §3–§4.

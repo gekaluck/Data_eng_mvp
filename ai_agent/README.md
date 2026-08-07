@@ -1,9 +1,8 @@
 # `ai_agent/` — AI-Agent Layer (Phase A)
 
-> **Status: runnable metadata MCP layer.** The same five governed catalog tools are exposed
-> over MCP stdio and loopback streamable HTTP, backed by published dbt artifacts and live
-> Trino/Iceberg metadata. Query execution caps, budgets/audit, and the agent loop remain
-> next.
+> **Status: runnable metadata and planning MCP layer.** Five governed catalog tools plus
+> scan-free `explain_query` are exposed over MCP stdio and loopback streamable HTTP.
+> Audited/capped data reads, budgets, and the agent loop remain next.
 
 ## Purpose
 
