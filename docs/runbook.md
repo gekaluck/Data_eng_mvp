@@ -313,7 +313,7 @@ Check:
 
 ### AI metadata adapter is stale or incomplete
 
-Run the isolated adapter tests first, then the opt-in live smoke check. The smoke uses only
+Run the isolated adapter tests first, then the opt-in adapter smoke check. The smoke uses only
 fixed-shape `DESCRIBE` and Iceberg metadata-table reads as Trino user `agent`; it does not
 query CoinCap or scan Gold business rows.
 
@@ -337,6 +337,47 @@ and `schema_warnings` is empty. If it fails or warns:
   reinterpret it as nullable or non-nullable
 - a retryable `ENGINE_ERROR` points to Trino health/access; a non-retryable one points to an
   incompatible metadata-table shape and should be checked against the pinned Trino version
+
+### Check the MCP metadata server manually
+
+The server has one tool registry and two frontends. The most useful manual check exercises
+both with the official MCP client, calls all five metadata tools, and verifies that a denied
+table returns `isError: true` with the exact structured `TABLE_NOT_ALLOWED` envelope. It
+uses only fixed-shape metadata reads; it does not call CoinCap or scan Gold business rows.
+
+With Trino running locally:
+
+```powershell
+$repoRoot = (Get-Location).Path
+docker run --rm --mount "type=bind,source=$repoRoot,target=/workspace" `
+  -w /workspace -e AI_TRINO_HOST=host.docker.internal python:3.12-slim `
+  sh -c "pip install -q -r ai_agent/requirements.txt && python -m ai_agent.smoke_mcp"
+```
+
+Expected: separate `stdio` and `streamable-http` reports list exactly `list_tables`,
+`get_table_schema`, `get_table_snapshots`, `get_lineage`, and `get_model_docs`; both report
+the same first allow-listed table and `denial_code: TABLE_NOT_ALLOWED`.
+
+To wire a local MCP host directly, install `ai_agent/requirements.txt` in Python 3.12 and
+configure this stdio command (it is also the default):
+
+```powershell
+python -m ai_agent.mcp_server --transport stdio
+```
+
+Do not judge stdio by running it in a terminal and typing text: stdout carries MCP protocol
+frames and is meant for an MCP client. For an inspectable local endpoint, start:
+
+```powershell
+python -m ai_agent.mcp_server --transport streamable-http
+```
+
+Then connect an MCP client to `http://127.0.0.1:8000/mcp`. `AI_MCP_PORT` and
+`AI_MCP_PATH` (or `--port` / `--path`) may change the local endpoint. The host is
+intentionally restricted to `127.0.0.1`, `localhost`, or `::1`; `0.0.0.0` fails closed.
+Do not work around that validation to expose the server remotely: this slice has no remote
+authentication design. HTTP 421 responses usually mean the client's `Host` or `Origin`
+header is outside the explicit loopback DNS-rebinding allow-list.
 
 ### History backfill succeeded but expected dates are missing
 

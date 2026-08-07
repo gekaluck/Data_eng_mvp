@@ -99,7 +99,11 @@ budget charge + full guardrail path).
 
 Contract notes that matter:
 
-- The five metadata tools are implemented as transport-neutral Python methods (D037).
+- The five metadata tools are implemented as transport-neutral Python methods (D037) and
+  registered once for MCP stdio and streamable HTTP (D038). Both frontends advertise the
+  same bounded input/typed output schemas. Success payloads and exact structured errors are
+  present in `structuredContent`; errors also set MCP `isError: true` so a client can
+  distinguish a recoverable tool denial from a successful result.
   `list_tables`, `get_model_docs`, and `get_lineage` fail closed over the published dbt
   artifact pair and expose only allow-listed Gold models as queryable. `get_table_schema`
   and `get_table_snapshots` issue adapter-owned, fixed-shape statements as the restricted
@@ -133,13 +137,13 @@ Three layers with explicitly different jobs (Decision D4). The tool layer is ric
 | Resource group | Engine | Trino resource group: soft memory, concurrency/queue, hourly physical-scan quota | Repeated or concurrent scans that dodge tool-layer caps; the tool layer still owns per-query timeout |
 | Behavioral steering | Prompt | System-prompt scope rules ("only answer from available tables", "always cite SQL") | Nothing — advisory only, and the doc says so |
 
-**Implementation status (2026-08-06, D036–D037).** The first guardrail slice is live:
+**Implementation status (2026-08-07, D036–D038).** The first guardrail slice is live:
 single-statement Trino parsing, a root-`SELECT` whitelist, explicit `SELECT INTO` denial,
 CTE-aware fully qualified physical-table extraction, exact allow-list checks, and structured
-errors. The five catalog metadata tools are also live behind transport-neutral interfaces,
-including allow-list-filtered dbt docs/lineage and fixed-shape Iceberg schema, file-stat, and
-snapshot reads. Row/scan caps, budgets, audit logging, arbitrary query execution, and MCP
-transports are still unbuilt; the engine controls from D035 remain the only execution
+errors. The five catalog metadata tools are live over both MCP stdio and loopback
+streamable HTTP, including allow-list-filtered dbt docs/lineage and fixed-shape Iceberg
+schema, file-stat, and snapshot reads. Row/scan caps, budgets, audit logging, and arbitrary
+query execution are still unbuilt; the engine controls from D035 remain the only execution
 backstop until those land.
 
 Design stance worth defending: the AST validator is the **primary** control because it is deterministic, unit-testable, and LLM-independent — you can prove properties about it that you cannot prove about a prompt. The engine backstop exists because the validator is code and code has bugs; a `CREATE TABLE` that somehow survives parsing dies at the grant check. Defense in depth, with each layer catching a different failure class.

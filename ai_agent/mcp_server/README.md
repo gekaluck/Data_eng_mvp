@@ -1,4 +1,4 @@
-# `mcp_server/` — transport-agnostic core
+# `mcp_server/` — governed metadata MCP server
 
 Transport-agnostic MCP server. Owns everything between "tool call arrives" and "governed
 result returns": tool router (stdio + streamable-HTTP frontends), the guardrail layer (AST
@@ -19,7 +19,15 @@ Implemented now:
   columns, file statistics, and snapshots through fixed-shape read-only queries
 - live-schema/dbt-doc reconciliation that keeps Iceberg authoritative and emits explicit
   drift warnings instead of inventing columns or nullability
+- one shared FastMCP tool registry exposed through stdio and stateless JSON streamable HTTP
+- typed MCP output schemas, with successful results and the exact structured guardrail
+  envelope available in both text and `structuredContent`
+- read-only/idempotent tool annotations, bounded input schemas, and explicit
+  `isError: true` tool failures that clients can inspect and recover from
+- loopback-only HTTP binding with DNS-rebinding host/origin checks; stdio remains the
+  default local-host transport
 
-Not implemented yet: MCP transports, query/sample/explain execution, row and scan caps,
-budget accounting, or audit logging. Contracts and the full guardrail spec remain in
+Not implemented yet: query/sample/explain execution, row and scan caps, budget accounting,
+audit logging, or remote authenticated HTTP exposure. Contracts and the full guardrail spec
+remain in
 [`../../docs/ai-agent-architecture.md`](../../docs/ai-agent-architecture.md) §3–§4.
