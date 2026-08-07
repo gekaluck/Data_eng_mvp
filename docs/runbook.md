@@ -338,13 +338,13 @@ and `schema_warnings` is empty. If it fails or warns:
 - a retryable `ENGINE_ERROR` points to Trino health/access; a non-retryable one points to an
   incompatible metadata-table shape and should be checked against the pinned Trino version
 
-### Check the MCP metadata server manually
+### Check the governed MCP server manually
 
 The server has one tool registry and two frontends. The most useful manual check exercises
-both with the official MCP client, calls all five metadata tools plus `explain_query` and
-`sample_rows`, and verifies semantic, allow-list, and budget denials. It does not call
-CoinCap. The only Gold business-data scan is the server-owned sample, capped at two rows in
-this smoke check.
+both with the official MCP client, calls all five metadata tools plus `explain_query`,
+`sample_rows`, and `execute_query`, and verifies semantic, allow-list, and budget denials.
+It does not call CoinCap. Gold reads are one server-owned two-row sample and one analytical
+query returning one row while fetching one extra to prove truncation.
 
 With Trino running locally:
 
@@ -357,9 +357,11 @@ docker run --rm --mount "type=bind,source=$repoRoot,target=/workspace" `
 
 Expected: separate `stdio` and `streamable-http` reports list exactly `list_tables`,
 `get_table_schema`, `get_table_snapshots`, `get_lineage`, `get_model_docs`,
-`explain_query`, and `sample_rows`. Both report the same first allow-listed table,
-`explain_valid: true`, `semantic_denial_code: COLUMN_NOT_FOUND`, `sample_rows: 2`,
-`budget_denial_code: BUDGET_EXCEEDED`, and `denial_code: TABLE_NOT_ALLOWED`.
+`explain_query`, `sample_rows`, and `execute_query`. Both report the same first allow-listed
+table, `explain_valid: true`, `semantic_denial_code: COLUMN_NOT_FOUND`, `sample_rows: 2`,
+`execute_rows: 1`, `execute_truncated: true`, a non-empty `execute_query_id`, non-negative
+`execute_stats`, two `execute_caveats`, `budget_denial_code: BUDGET_EXCEEDED`, and
+`denial_code: TABLE_NOT_ALLOWED`.
 
 `plan_chars` is the bounded distributed plan returned by Trino. If `explain_query` returns
 `valid: false`, inspect its `diagnostic.code`, `message`, and optional line/column before
@@ -368,26 +370,51 @@ reach Trino; a non-retryable access error means the restricted `agent` configura
 drifted. Never replace the server-owned `EXPLAIN` with `EXPLAIN ANALYZE`, which executes the
 query and violates this tool's no-scan boundary.
 
-`explain_query` and `sample_rows` both require a `request_id` and `profile`. Reuse one
-stable ID for the whole natural-language question and keep its profile fixed: `fast` allows
-three total Trino planning/sample attempts and `thorough` allows ten. Metadata calls and
+`explain_query`, `sample_rows`, and `execute_query` require a `request_id` and `profile`.
+Reuse one stable ID for the whole natural-language question and keep its profile fixed:
+`fast` allows three total Trino attempts and `thorough` allows ten. Metadata calls and
 requests rejected locally before Trino are free. A semantic planning error, connection
-failure, or other attempted engine call still spends one token; starting a new request ID
-to evade exhaustion violates the tool contract.
+failure, timeout, scan refusal, or other attempted engine call still spends one token;
+starting a new request ID to evade exhaustion violates the tool contract.
 
-Every schema-valid `sample_rows` invocation must append an audit record before returning a
-result or error. Inspect the latest records from the repository root with:
+Every schema-valid `sample_rows` or `execute_query` invocation must append an audit record
+before returning a result or error. Inspect the latest records from the repository root:
 
 ```powershell
 Get-Content ai_agent/runtime/query-audit.jsonl -Tail 5
 ```
 
-The default file is gitignored and contains request/profile, table, generated SQL,
-validation verdict, timing, columns/row count, and failure code—never raw row values. Set
+The default file is gitignored and contains request/profile, tables/SQL, validation verdict,
+timing, columns/row count, truncation, query ID, work stats, and failure code—never raw row
+values. Set
 `AI_AUDIT_LOG_PATH` before server startup to use another local path. `Required query audit
 write failed` means the parent path cannot be created or appended; fix its path/permissions
 and retry with the same request ID. The failure is deliberately non-retryable at the tool
 boundary so business rows are never returned without their audit record.
+
+### `execute_query` returns `TIMEOUT` or `SCAN_LIMIT_EXCEEDED`
+
+These are deliberate guardrail outcomes, not transport failures. `execute_query` returns at
+most 500 rows (100 by default), monitors the complete query for 15 seconds, and polls Trino
+protocol statistics for a 100 MiB processed-data threshold. It sends Trino cancellation
+when a threshold is observed. Statistics arrive in response batches, so a query can
+overshoot the byte threshold before cancellation; a very fast query can finish before the
+cancel request arrives. In both cases the over-limit result is refused and audited.
+
+First checks:
+
+- inspect the audit record's `query_id`, `elapsed_ms`, `rows_read`, `bytes_read`, and
+  `failure_code`
+- use the query ID in `docker compose logs --tail 250 trino` to confirm `USER_CANCELED` or
+  inspect why the query completed before cancellation
+- narrow date predicates, remove unnecessary joins, or aggregate earlier; retry only while
+  the original request budget has tokens
+- do not raise the hard constants to make one query pass; revisit D041 if representative
+  golden-set queries consistently need more than 15 seconds or 100 MiB
+
+An `ENGINE_ERROR` instead indicates invalid Trino semantics, access drift, connectivity, or
+an incompatible result shape. Its `retryable` field distinguishes infrastructure from a
+query/access error.
 
 To wire a local MCP host directly, install `ai_agent/requirements.txt` in Python 3.12 and
 configure this stdio command (it is also the default):
@@ -412,10 +439,9 @@ header is outside the explicit loopback DNS-rebinding allow-list.
 
 ### A budgeted tool refuses with `BUDGET_EXCEEDED`, or eval efficiency numbers drift
 
-Budgets are process-local and keyed by `request_id`, and nothing resets them for the life of
-the server (D040) — there is no "request complete" call. A long-lived streamable-HTTP server
-(the A2 eval transport) keeps every `request_id`'s token count until it restarts. Two
-consequences bite the eval harness (§6), not single interactive questions:
+Budgets are process-local and keyed by `request_id`; there is no "request complete" call.
+The server retains the 1,024 most recently used IDs and evicts the least-recently-used entry
+when a new one crosses that bound (D041). Two consequences matter to the eval harness:
 
 - **A reused `request_id` resumes an old budget.** Driving several runs against one server
   process means a question that reuses an ID from an earlier run starts partway through — or
@@ -423,9 +449,9 @@ consequences bite the eval harness (§6), not single interactive questions:
   than a cold request would, quietly skewing the efficiency and stability metrics. Give every
   `(question, run)` a unique `request_id`, or restart the server between runs; both make each
   question start cold.
-- **The budget map only grows.** One ID per question over a long-running process accumulates
-  in memory — negligible at this scale but unbounded in principle. A bounded eviction is
-  expected to land with `execute_query`, which shares the same budget.
+- **A sufficiently old ID can be evicted.** Reusing it after 1,024 more recently touched IDs
+  starts a fresh budget. Eval IDs must therefore identify one `(question, run)`, not be a
+  recycled pool that treats retained/evicted state as meaningful.
 
 For a single interactive question none of this applies: pick one ID, keep the profile fixed,
 and let the process own it.

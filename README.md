@@ -13,8 +13,8 @@ Gold implementations (Spark and dbt) kept side by side for comparison.
 
 > **What's next:** the AI-agent layer now exposes five governed Gold metadata tools,
 > budgeted scan-free `explain_query`, and capped/audited `sample_rows` through MCP stdio
-> and loopback streamable HTTP. Capped arbitrary queries and the owned text-to-analytics
-> loop are next. See the
+> and loopback streamable HTTP. Governed `execute_query` adds row, scan, time, budget, and
+> audit enforcement; the owned text-to-analytics loop is next. See the
 > [Roadmap](#roadmap) and [`docs/ai-agent-architecture.md`](docs/ai-agent-architecture.md).
 
 ---
@@ -234,10 +234,10 @@ of truth for that work). It extends the platform without modifying any existing 
 - **Phase A — MCP server + text-to-analytics agent.** The MCP server currently exposes
   governed, read-only Gold metadata (schema, snapshots, lineage, and dbt docs) over stdio
   and loopback streamable HTTP, plus budgeted scan-free SQL planning through
-  `explain_query` and capped/audited row inspection through `sample_rows`. The remaining
-  work adds capped `execute_query`; a bounded-state-machine agent then turns
-  natural-language questions into validated SQL with a confidence gate that refuses rather
-  than guesses. Includes an eval
+  `explain_query`, capped/audited row inspection through `sample_rows`, and governed
+  analytical reads through `execute_query`. A bounded-state-machine agent now remains to
+  turn natural-language questions into validated SQL with a confidence gate that refuses
+  rather than guesses. Includes an eval
   harness scored on execution accuracy.
 - **Phase B — RAG over catalog & lineage docs.** An Airflow DAG that chunks and embeds
   dbt/Iceberg catalog metadata into a vector store, surfaced to the agent as a
@@ -245,9 +245,9 @@ of truth for that work). It extends the platform without modifying any existing 
 - **Phase C — Feature-store bridge (Feast).** A thin Feast bridge reading Gold Iceberg
   tables through Trino, with feature definitions derived from existing dbt models (sketch).
 
-The Phase A implementation lives under [`ai_agent/`](ai_agent). Its metadata, planning,
-shared-budget, and capped sampling slice is runnable today; arbitrary analytical query
-execution and the agent loop remain deliberately separate follow-up slices.
+The Phase A implementation lives under [`ai_agent/`](ai_agent). Its complete governed MCP
+query boundary is runnable today; the owned agent loop and eval harness remain deliberately
+separate follow-up slices.
 
 ---
 

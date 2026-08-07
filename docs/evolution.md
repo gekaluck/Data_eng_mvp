@@ -319,3 +319,17 @@ a second store of business-row values. The first live parity check used all thre
 tokens on each transport and proved the fourth call fails before Trino. The remaining query
 step is deliberately larger: `execute_query` still needs arbitrary-SQL row truncation,
 scan/time enforcement, execution stats, and the same fail-closed audit boundary.
+
+D041 closed that boundary without pretending that `LIMIT` alone makes a query cheap. The
+server now rewrites the top-level result bound, fetches one extra row to distinguish a
+complete answer from truncation, and watches Trino's processed rows and bytes while a
+separate worker owns the query. Fifteen seconds or an observed 100 MiB triggers
+cancellation; every success or refusal carries the Trino query ID and measured work into
+the audit, while returned values still do not. A live diagnostic made the distinction
+concrete: the deliberately expensive join was `USER_CANCELED` by Trino after roughly 100
+ms, while a tiny query could finish before its one-byte test cap was observed—but its final
+statistics still caused the tool to refuse it. Polling is an abort mechanism, not a claim
+that distributed work stops at an exact byte. With the budget map now bounded as well, the
+MCP server has all eight governed tools the owned loop needs. The next uncertainty moves
+up a layer: whether a pinned LLM can use this boundary accurately enough to answer rather
+than merely generate plausible SQL.

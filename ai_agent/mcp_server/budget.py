@@ -1,6 +1,7 @@
 """Process-local query budgets scoped to one natural-language request."""
 
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from threading import Lock
 from typing import Literal
@@ -12,6 +13,7 @@ MAX_REQUEST_ID_CHARS = 128
 REQUEST_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"
 _REQUEST_ID = re.compile(REQUEST_ID_PATTERN)
 _PROFILE_LIMITS: dict[BudgetProfile, int] = {"fast": 3, "thorough": 10}
+DEFAULT_MAX_TRACKED_REQUESTS = 1_024
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,10 +28,19 @@ class BudgetStatus:
 
 
 class RequestBudgetManager:
-    """Thread-safe in-memory counter; one server process owns one budget map."""
+    """Thread-safe in-memory LRU counter; one server process owns one budget map."""
 
-    def __init__(self) -> None:
-        self._requests: dict[str, tuple[BudgetProfile, int]] = {}
+    def __init__(
+        self, *, max_tracked_requests: int = DEFAULT_MAX_TRACKED_REQUESTS
+    ) -> None:
+        if (
+            not isinstance(max_tracked_requests, int)
+            or isinstance(max_tracked_requests, bool)
+            or max_tracked_requests < 1
+        ):
+            raise ValueError("max_tracked_requests must be a positive integer.")
+        self._max_tracked_requests = max_tracked_requests
+        self._requests: OrderedDict[str, tuple[BudgetProfile, int]] = OrderedDict()
         self._lock = Lock()
 
     @staticmethod
@@ -47,7 +58,9 @@ class RequestBudgetManager:
                 ErrorCode.PARSE_ERROR,
                 "request_id must be 1-128 characters using letters, digits, '.', "
                 "'_', ':' or '-'.",
-                hint="Use one stable request_id for the whole natural-language question.",
+                hint=(
+                    "Use one stable request_id for the whole natural-language question."
+                ),
             )
         if not isinstance(profile, str) or profile not in _PROFILE_LIMITS:
             raise GuardrailError(
@@ -85,6 +98,9 @@ class RequestBudgetManager:
                 )
             used += 1
             self._requests[request_id] = (profile, used)
+            self._requests.move_to_end(request_id)
+            while len(self._requests) > self._max_tracked_requests:
+                self._requests.popitem(last=False)
             return BudgetStatus(
                 request_id=request_id,
                 profile=profile,
@@ -98,7 +114,10 @@ class RequestBudgetManager:
         request_id: str,
         profile: BudgetProfile,
     ) -> BudgetStatus:
-        """Inspect a budget without consuming a token (primarily for tests/diagnostics)."""
+        """Inspect a budget without consuming a token.
+
+        This is primarily for tests and diagnostics.
+        """
         request_id, profile = self.validate_request(request_id, profile)
         with self._lock:
             existing = self._requests.get(request_id)
@@ -109,6 +128,8 @@ class RequestBudgetManager:
                     hint="A request cannot change budget profiles midway.",
                 )
             used = existing[1] if existing else 0
+            if existing is not None:
+                self._requests.move_to_end(request_id)
         limit = _PROFILE_LIMITS[profile]
         return BudgetStatus(
             request_id=request_id,

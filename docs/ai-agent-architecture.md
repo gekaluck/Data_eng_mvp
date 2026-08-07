@@ -80,7 +80,7 @@ flowchart TB
 
 ## 3. Phase A — Tool Inventory & Contracts
 
-All tools return either a typed result or a **structured error**: `{code, message, retryable, hint}`. Error codes: `PARSE_ERROR`, `NOT_READ_ONLY`, `TABLE_NOT_ALLOWED`, `BUDGET_EXCEEDED`, `TIMEOUT`, `ENGINE_ERROR`. The agent loop's reflect/retry behavior keys off `code` and `retryable` — this contract is what makes the loop designable at all.
+All tools return either a typed result or a **structured error**: `{code, message, retryable, hint}`. Error codes: `PARSE_ERROR`, `NOT_READ_ONLY`, `TABLE_NOT_ALLOWED`, `BUDGET_EXCEEDED`, `TIMEOUT`, `SCAN_LIMIT_EXCEEDED`, `ENGINE_ERROR`. The agent loop's reflect/retry behavior keys off `code` and `retryable` — this contract is what makes the loop designable at all.
 
 Cost classes: **free** (dbt or engine metadata only, no business-data scan and no budget
 charge), **cheap** (engine planning, small budget charge), **expensive** (engine scan, full
@@ -95,7 +95,7 @@ budget charge + full guardrail path).
 | `get_model_docs` | `model` | dbt description, column docs, tests defined | free |
 | `sample_rows` | `table, n (≤20), request_id, profile` | `n` rows — exploration sugar with a hard cap, so the guardrails can treat it more cheaply than arbitrary SQL | cheap |
 | `explain_query` | `sql, request_id, profile` | plan summary + validation verdict, **no scan** — the loop's pre-execution validity check | cheap |
-| `execute_query` | `sql, max_rows?` | `{columns, rows, truncated: bool, stats: {rows_read, bytes_read, elapsed_ms}, query_id}` | expensive |
+| `execute_query` | `sql, request_id, profile, max_rows? (default 100, ≤500)` | `{columns, rows, truncated, tables, stats: {rows_read, bytes_read, elapsed_ms}, query_id, caveats}` | expensive |
 
 Contract notes that matter:
 
@@ -125,7 +125,8 @@ Contract notes that matter:
   `thorough`. Their shared process-local budget charges immediately before each Trino call:
   three tokens for `fast`, ten for `thorough`, with no profile switching. Local validation
   denials and all five metadata tools are free; engine failures consume their attempted
-  token. Restarting the server resets this in-memory state.
+  token. `execute_query` uses the same counter. Restarting the server resets this in-memory
+  state; a 1,024-entry LRU bound evicts the oldest request state on a long-lived process.
 - Iceberg remains schema truth. dbt descriptions fill otherwise-empty live comments, and
   column-set disagreement is returned in `warnings`. `nullable` is `null` when Trino does
   not report a constraint; an empty partition/sort order means the live metadata exposes no
@@ -134,7 +135,14 @@ Contract notes that matter:
   statistic. Current-snapshot `row_count` and `size_bytes` remain available from Iceberg's
   `$files` metadata through `get_table_schema`; logical rows subtract active position and
   equality delete records from physical data-file records.
-- `execute_query` **always** returns `truncated` and scan stats. Truncation must reach the final answer as a caveat — a truncated result presented as complete is a silent-wrongness failure mode (§7, F9).
+- `execute_query` is implemented in D041. The existing validator runs first, then the server
+  preserves a smaller literal limit or injects `max_rows + 1`, fetches at most that amount,
+  and returns no more than `max_rows` (default 100, hard maximum 500). The extra row makes
+  tool-level `truncated` exact. A monitored Trino worker polls protocol stats, cancels at 15
+  seconds or above 100 MiB processed, and reports the query ID, processed rows/bytes, and
+  elapsed time. Every result also carries the conservative sparse-coverage/null caveats
+  required by D10. Truncation must reach the final answer—a truncated result presented as
+  complete is a silent-wrongness failure mode (§7, F9).
 - Every `execute_query`/`sample_rows` call is written to an **audit log** (SQL, validation verdict, stats, timestamp, client) before results return. Under R2 this is a debugging/eval instrument, not a compliance one — but it becomes the compliance instrument if R2 ever changes.
 - The server is stateless per call except budget accounting, which is scoped to a client-supplied `request_id` (one NL question = one request_id = one budget).
 
@@ -148,22 +156,23 @@ Three layers with explicitly different jobs (Decision D4). The tool layer is ric
 |---------|-------|-----------|---------------|
 | Read-only SQL | Tool | AST parse (Trino dialect); statement-type whitelist: single `SELECT` only. No DDL/DML, no `EXECUTE`, no `SET SESSION`, no multi-statement | Writes, session tampering, stacked statements |
 | Table allow-list | Tool | Require fully qualified physical tables, resolve CTE shadowing in the AST, normalize names, and require every dependency in the Gold allow-list | Access to Silver/Bronze/system tables and ambient catalog/schema defaults |
-| Row cap | Tool | Inject/lower `LIMIT` to configured max; set `truncated` flag when hit | Result floods into the LLM context |
-| Scan/cost cap | Tool | Per-query timeout; bytes-read abort via query stats polling | Runaway scans on a laptop-class stack |
+| Row cap | Tool | Preserve a smaller caller limit or inject `max_rows + 1`; return at most `max_rows` (≤500) and set exact `truncated` | Result floods into the LLM context |
+| Scan/cost cap | Tool | 15 s wall clock; cancel above observed 100 MiB via query-stat polling | Runaway scans on a laptop-class stack |
 | Query budget | Tool | Token bucket per `request_id`; `fast`=3, `thorough`=10; exhaustion → `BUDGET_EXCEEDED` | Unbounded agent loops |
 | Read-only user | Engine | Trino user with SELECT-only grants on Gold catalog/schema | Anything a tool-layer parser bug lets through |
 | Resource group | Engine | Trino resource group: soft memory, concurrency/queue, hourly physical-scan quota | Repeated or concurrent scans that dodge tool-layer caps; the tool layer still owns per-query timeout |
 | Behavioral steering | Prompt | System-prompt scope rules ("only answer from available tables", "always cite SQL") | Nothing — advisory only, and the doc says so |
 
-**Implementation status (2026-08-07, D036–D040).** The first guardrail slice is live:
+**Implementation status (2026-08-07, D036–D041).** The Phase A query boundary is live:
 single-statement Trino parsing, a root-`SELECT` whitelist, explicit `SELECT INTO` denial,
 CTE-aware fully qualified physical-table extraction, exact allow-list checks, and structured
 errors. The five catalog metadata tools are live over both MCP stdio and loopback
 streamable HTTP, including allow-list-filtered dbt docs/lineage and fixed-shape Iceberg
-schema, file-stat, and snapshot reads. Scan-free `explain_query` and capped `sample_rows`
-share the D040 request budget; sampling is audited locally without retaining row values.
-Arbitrary query execution, its row/scan/time caps and stats, and the owned agent loop remain
-unbuilt; the engine controls from D035 still backstop the implemented query tools.
+schema, file-stat, and snapshot reads. Scan-free `explain_query`, capped `sample_rows`, and
+row/scan/time-bounded `execute_query` share the request budget. Both business-data tools
+audit before return without retaining row values; execution includes Trino work stats and
+data caveats. The owned natural-language agent loop remains unbuilt; D035's engine controls
+still independently backstop every query tool.
 
 Design stance worth defending: the AST validator is the **primary** control because it is deterministic, unit-testable, and LLM-independent — you can prove properties about it that you cannot prove about a prompt. The engine backstop exists because the validator is code and code has bugs; a `CREATE TABLE` that somehow survives parsing dies at the grant check. Defense in depth, with each layer catching a different failure class.
 

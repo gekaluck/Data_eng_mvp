@@ -137,6 +137,14 @@ migrated from local Airflow to the cloud.
 - `sample_rows` accepts only an allow-listed table plus `n <= 20`; the server constructs
   the quoted `SELECT * ... LIMIT n`, records every accepted attempt to a local JSONL audit,
   omits raw row values from that record, and fails closed when the audit cannot be written
+- `execute_query` accepts one validated allow-listed `SELECT`, returns at most 500 rows,
+  detects truncation with one extra fetched row, and exposes the Trino query ID plus
+  processed-row/byte and elapsed-time statistics with explicit data-quality caveats
+- Analytical execution is monitored across the complete query lifetime: the server
+  cancels after 15 seconds or once observed processed bytes exceed 100 MiB. Protocol stats
+  can arrive after work is performed, so the Trino resource group remains the scan backstop
+- The shared process-local budget remembers at most 1,024 recently used request IDs. It
+  evicts the least-recently-used entry rather than growing for the lifetime of an eval server
 - HTTP is stateless JSON on `/mcp` and binds to loopback only. Explicit allowed-host and
   allowed-origin checks protect the local endpoint from DNS rebinding. Remote or multi-user
   exposure is not an implicit configuration change; it requires an authentication decision

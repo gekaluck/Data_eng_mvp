@@ -76,3 +76,22 @@ def test_concurrent_charges_cannot_exceed_fast_limit():
 
     assert outcomes.count("charged") == 3
     assert outcomes.count("BUDGET_EXCEEDED") == 9
+
+
+def test_budget_map_evicts_the_least_recently_used_request():
+    budget = RequestBudgetManager(max_tracked_requests=2)
+    budget.charge("old", "fast")
+    budget.charge("recent", "fast")
+    budget.status("old", "fast")
+
+    budget.charge("new", "fast")
+
+    assert budget.status("old", "fast").used == 1
+    assert budget.status("new", "fast").used == 1
+    assert budget.status("recent", "fast").used == 0
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.5, "10"])
+def test_budget_map_bound_must_be_a_positive_integer(value):
+    with pytest.raises(ValueError, match="positive integer"):
+        RequestBudgetManager(max_tracked_requests=value)

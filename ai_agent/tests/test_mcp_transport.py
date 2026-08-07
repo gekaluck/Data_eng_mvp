@@ -19,6 +19,13 @@ from ai_agent.mcp_server.metadata_models import (
     TableStats,
     TableSummary,
 )
+from ai_agent.mcp_server.query_executor import (
+    DATA_CAVEATS,
+    DEFAULT_MAX_ROWS,
+    MAX_QUERY_ROWS,
+    ExecutedQuery,
+    QueryExecutionStats,
+)
 from ai_agent.mcp_server.query_explainer import MAX_SQL_CHARS, QueryExplanation
 from ai_agent.mcp_server.query_sampler import MAX_SAMPLE_ROWS, SampleRows
 from ai_agent.mcp_server.transport import (
@@ -37,6 +44,7 @@ TOOL_NAMES = {
     "get_model_docs",
     "explain_query",
     "sample_rows",
+    "execute_query",
 }
 
 
@@ -116,9 +124,7 @@ class FakeQueryExplainer:
         )
 
     def explain_query(self, sql, *, request_id, profile):
-        self.calls.append(
-            {"sql": sql, "request_id": request_id, "profile": profile}
-        )
+        self.calls.append({"sql": sql, "request_id": request_id, "profile": profile})
         if self.failure:
             raise self.failure
         return self.result
@@ -147,35 +153,77 @@ class FakeQuerySampler:
         )
 
 
-def _server(fake=None, explainer=None, sampler=None):
+class FakeQueryExecutor:
+    def __init__(self):
+        self.calls = []
+        self.failure = None
+
+    def execute_query(self, sql, *, request_id, profile, max_rows=DEFAULT_MAX_ROWS):
+        self.calls.append(
+            {
+                "sql": sql,
+                "request_id": request_id,
+                "profile": profile,
+                "max_rows": max_rows,
+            }
+        )
+        if self.failure:
+            raise self.failure
+        return ExecutedQuery(
+            columns=("symbol",),
+            rows=(("BTC",),),
+            truncated=False,
+            tables=(TABLE,),
+            stats=QueryExecutionStats(
+                rows_read=20,
+                bytes_read=4096,
+                elapsed_ms=12,
+            ),
+            query_id="query-1",
+            caveats=DATA_CAVEATS,
+        )
+
+
+def _server(fake=None, explainer=None, sampler=None, executor=None):
     return create_mcp_server(
         fake or FakeMetadataTools(),
         query_explainer=explainer or FakeQueryExplainer(),
         query_sampler=sampler or FakeQuerySampler(),
+        query_executor=executor or FakeQueryExecutor(),
         http=HttpSettings(),
     )
 
 
 def test_partial_query_tool_injection_is_rejected():
-    # Building only the missing tool would give it a separate budget, so one request_id
-    # could spend a full quota in planning and again in sampling. Require both or neither.
-    with pytest.raises(ValueError, match="both or neither"):
+    # Building any missing tool would give it a separate budget, so one request_id could
+    # spend multiple quotas across planning, sampling, and execution. All are required.
+    with pytest.raises(ValueError, match="all three or none"):
         create_mcp_server(
             FakeMetadataTools(),
             query_explainer=FakeQueryExplainer(),
             query_sampler=None,
+            query_executor=None,
             http=HttpSettings(),
         )
-    with pytest.raises(ValueError, match="both or neither"):
+    with pytest.raises(ValueError, match="all three or none"):
         create_mcp_server(
             FakeMetadataTools(),
             query_explainer=None,
             query_sampler=FakeQuerySampler(),
+            query_executor=None,
+            http=HttpSettings(),
+        )
+    with pytest.raises(ValueError, match="all three or none"):
+        create_mcp_server(
+            FakeMetadataTools(),
+            query_explainer=None,
+            query_sampler=None,
+            query_executor=FakeQueryExecutor(),
             http=HttpSettings(),
         )
 
 
-def test_registers_exactly_seven_read_only_tools_with_structured_schemas():
+def test_registers_exactly_eight_read_only_tools_with_structured_schemas():
     server = _server()
 
     tools = asyncio.run(server.list_tools())
@@ -201,9 +249,7 @@ def test_success_result_has_matching_text_and_structured_content():
     assert result.isError is False
     assert result.structuredContent["tables"][0]["table"] == TABLE
     assert json.loads(result.content[0].text) == result.structuredContent
-    assert fake.calls == [
-        ("list_tables", {"schema": "crypto_dbt", "tag": None})
-    ]
+    assert fake.calls == [("list_tables", {"schema": "crypto_dbt", "tag": None})]
 
 
 def test_guardrail_failure_is_an_mcp_tool_error_with_exact_envelope():
@@ -285,6 +331,43 @@ def test_sample_rows_returns_the_same_typed_payload_through_mcp():
     ]
 
 
+def test_execute_query_returns_the_same_typed_payload_through_mcp():
+    executor = FakeQueryExecutor()
+    sql = f"SELECT symbol FROM {TABLE}"
+
+    result = asyncio.run(
+        _server(executor=executor).call_tool(
+            "execute_query",
+            {
+                "sql": sql,
+                "request_id": "request-1",
+                "profile": "fast",
+                "max_rows": 25,
+            },
+        )
+    )
+
+    assert result.isError is False
+    assert result.structuredContent == {
+        "columns": ["symbol"],
+        "rows": [["BTC"]],
+        "truncated": False,
+        "tables": [TABLE],
+        "stats": {"rows_read": 20, "bytes_read": 4096, "elapsed_ms": 12},
+        "query_id": "query-1",
+        "caveats": list(DATA_CAVEATS),
+    }
+    assert json.loads(result.content[0].text) == result.structuredContent
+    assert executor.calls == [
+        {
+            "sql": sql,
+            "request_id": "request-1",
+            "profile": "fast",
+            "max_rows": 25,
+        }
+    ]
+
+
 def test_tool_inputs_preserve_bounds_and_enums_in_mcp_schema():
     tools = {tool.name: tool for tool in asyncio.run(_server().list_tools())}
 
@@ -293,6 +376,7 @@ def test_tool_inputs_preserve_bounds_and_enums_in_mcp_schema():
     explain_sql = tools["explain_query"].inputSchema["properties"]["sql"]
     explain = tools["explain_query"].inputSchema["properties"]
     sample = tools["sample_rows"].inputSchema["properties"]
+    execute = tools["execute_query"].inputSchema["properties"]
 
     assert snapshot_limit["minimum"] == 1
     assert snapshot_limit["maximum"] == 100
@@ -305,6 +389,11 @@ def test_tool_inputs_preserve_bounds_and_enums_in_mcp_schema():
     assert sample["n"]["minimum"] == 1
     assert sample["n"]["maximum"] == MAX_SAMPLE_ROWS
     assert sample["profile"]["enum"] == ["fast", "thorough"]
+    assert execute["sql"]["maxLength"] == MAX_SQL_CHARS
+    assert execute["max_rows"]["minimum"] == 1
+    assert execute["max_rows"]["maximum"] == MAX_QUERY_ROWS
+    assert execute["max_rows"]["default"] == DEFAULT_MAX_ROWS
+    assert execute["profile"]["enum"] == ["fast", "thorough"]
 
 
 @pytest.mark.parametrize(
