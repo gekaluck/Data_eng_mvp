@@ -299,3 +299,12 @@ on loopback with DNS-rebinding checks, and the official client smoke proves that
 discover and invoke the same five tools, including the same structured denial. The agent
 still cannot execute an analytical query, but an MCP client can now acquire trustworthy
 planning context without bypassing the allow-list.
+
+D039 made the first caller-supplied SQL cross that boundary, but stopped deliberately at
+planning. `explain_query` runs the same AST and table-scope proof before wrapping the
+statement in Trino's ordinary distributed `EXPLAIN`—never `EXPLAIN ANALYZE`—and caps the
+returned plan before it reaches an LLM context. A missing column is now useful typed
+feedback (`valid: false`) rather than a generic server failure, while access and connection
+problems remain tool errors. The tempting companion, `sample_rows`, was deferred: unlike
+planning it reads business data, and the design already promises an audit record and a
+budget charge for every sample. Those controls should exist before that tool does.

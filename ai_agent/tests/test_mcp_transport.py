@@ -19,6 +19,7 @@ from ai_agent.mcp_server.metadata_models import (
     TableStats,
     TableSummary,
 )
+from ai_agent.mcp_server.query_explainer import MAX_SQL_CHARS, QueryExplanation
 from ai_agent.mcp_server.transport import (
     HttpSettings,
     SERVER_NAME,
@@ -34,6 +35,7 @@ TOOL_NAMES = {
     "get_table_snapshots",
     "get_lineage",
     "get_model_docs",
+    "explain_query",
 }
 
 
@@ -101,11 +103,33 @@ class FakeMetadataTools:
         )
 
 
-def _server(fake=None):
-    return create_mcp_server(fake or FakeMetadataTools(), http=HttpSettings())
+class FakeQueryExplainer:
+    def __init__(self):
+        self.calls = []
+        self.failure = None
+        self.result = QueryExplanation(
+            sql=f"SELECT * FROM {TABLE}",
+            tables=(TABLE,),
+            valid=True,
+            plan_summary="Fragment 0 [SINGLE]",
+        )
+
+    def explain_query(self, sql):
+        self.calls.append(sql)
+        if self.failure:
+            raise self.failure
+        return self.result
 
 
-def test_registers_exactly_five_read_only_tools_with_structured_schemas():
+def _server(fake=None, explainer=None):
+    return create_mcp_server(
+        fake or FakeMetadataTools(),
+        query_explainer=explainer or FakeQueryExplainer(),
+        http=HttpSettings(),
+    )
+
+
+def test_registers_exactly_six_read_only_tools_with_structured_schemas():
     server = _server()
 
     tools = asyncio.run(server.list_tools())
@@ -157,16 +181,40 @@ def test_guardrail_failure_is_an_mcp_tool_error_with_exact_envelope():
     assert json.loads(result.content[0].text) == result.structuredContent
 
 
+def test_explain_query_returns_the_same_typed_payload_through_mcp():
+    explainer = FakeQueryExplainer()
+    sql = f"SELECT * FROM {TABLE}"
+
+    result = asyncio.run(
+        _server(explainer=explainer).call_tool("explain_query", {"sql": sql})
+    )
+
+    assert result.isError is False
+    assert result.structuredContent == {
+        "sql": sql,
+        "tables": [TABLE],
+        "valid": True,
+        "plan_summary": "Fragment 0 [SINGLE]",
+        "plan_truncated": False,
+        "diagnostic": None,
+    }
+    assert json.loads(result.content[0].text) == result.structuredContent
+    assert explainer.calls == [sql]
+
+
 def test_tool_inputs_preserve_bounds_and_enums_in_mcp_schema():
     tools = {tool.name: tool for tool in asyncio.run(_server().list_tools())}
 
     snapshot_limit = tools["get_table_snapshots"].inputSchema["properties"]["limit"]
     lineage = tools["get_lineage"].inputSchema["properties"]
+    explain_sql = tools["explain_query"].inputSchema["properties"]["sql"]
 
     assert snapshot_limit["minimum"] == 1
     assert snapshot_limit["maximum"] == 100
     assert lineage["direction"]["enum"] == ["upstream", "downstream"]
     assert lineage["depth"]["maximum"] == 5
+    assert explain_sql["minLength"] == 1
+    assert explain_sql["maxLength"] == MAX_SQL_CHARS
 
 
 @pytest.mark.parametrize(

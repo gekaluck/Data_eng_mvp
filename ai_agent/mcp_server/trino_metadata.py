@@ -42,14 +42,16 @@ class TrinoDbApiRunner:
         port: int,
         http_scheme: str = "http",
         request_timeout_seconds: float = 15.0,
+        source: str = "ai-metadata-tools",
     ) -> None:
         self._host = host
         self._port = port
         self._http_scheme = http_scheme
         self._request_timeout_seconds = request_timeout_seconds
+        self._source = source
 
     @classmethod
-    def from_env(cls) -> "TrinoDbApiRunner":
+    def from_env(cls, *, source: str = "ai-metadata-tools") -> "TrinoDbApiRunner":
         """Build local defaults overridable without changing the security identity."""
         try:
             port = int(os.getenv("AI_TRINO_PORT", "8081"))
@@ -61,6 +63,7 @@ class TrinoDbApiRunner:
             port=port,
             http_scheme=os.getenv("AI_TRINO_SCHEME", "http"),
             request_timeout_seconds=timeout,
+            source=source,
         )
 
     def execute(self, sql: str) -> QueryResult:
@@ -71,7 +74,7 @@ class TrinoDbApiRunner:
             host=self._host,
             port=self._port,
             user="agent",
-            source="ai-metadata-tools",
+            source=self._source,
             http_scheme=self._http_scheme,
             request_timeout=self._request_timeout_seconds,
         )

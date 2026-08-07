@@ -1339,3 +1339,68 @@ guardrail code.
 **Revisit if**: A remote or multi-user client is approved, the owned service moves to a
 separate container, server-initiated MCP features require stateful/non-JSON HTTP sessions,
 or MCP 2 becomes the supported stable SDK line.
+
+---
+
+## D039 — Query Capability Starts with Bounded Planning, Not Data Reads
+**Date**: 2026-08-07
+**Status**: accepted
+
+**Decision**: Add `explain_query` as the first MCP tool that accepts caller SQL, while
+deferring `sample_rows` until its promised budget and audit controls exist. The tool accepts
+at most 20,000 characters, runs D036's single-`SELECT` AST and physical-table allow-list
+first, then prefixes the unchanged validated statement with
+`EXPLAIN (TYPE DISTRIBUTED)`. It never constructs `EXPLAIN ANALYZE`.
+
+A successful engine plan returns `valid: true`, the normalized physical tables, at most
+12,000 characters of plan text, and an explicit truncation flag. A Trino semantic user
+error such as `COLUMN_NOT_FOUND` returns `valid: false` with a typed code/message/location
+diagnostic: determining that a query is invalid is a successful validation operation, not
+an MCP transport failure. A permission denial remains a non-retryable `ENGINE_ERROR`, and
+a connection/planning failure is retryable.
+
+**Why**:
+
+- **Planning proves more than parsing without reading rows.** SQLGlot proves statement
+  shape and scope; Trino proves live columns, functions, types, and connector semantics.
+- **Distributed EXPLAIN satisfies both halves of the contract in one request.** A plan is
+  produced only after semantic validation succeeds. `TYPE VALIDATE` returns only a boolean
+  and would require a second engine call to provide the promised plan summary.
+- **The plan needs a context bound too.** A legal query with many joins/CTEs can produce a
+  very large plan even though it returns no data. The explicit cap prevents a planning tool
+  from flooding an MCP/LLM context, and the flag prevents silent truncation.
+- **Expected invalid SQL is feedback, not infrastructure failure.** The future loop can
+  revise a missing column or type mismatch directly from the typed diagnostic. Access and
+  connectivity failures still terminate through the stable tool-error envelope.
+- **Sampling has a different safety boundary.** It reads business rows, and §3 already
+  requires every sample to consume budget and create an audit record. Exposing it first
+  would make the implementation contradict its design during an intermediate phase.
+
+**Consequences**:
+
+- Both MCP transports now advertise six identical read-only tools: five metadata methods
+  and `explain_query`.
+- The server can validate realistic Gold SQL against live Trino without an analytical data
+  scan, a CoinCap call, an LLM call, a query budget, or an audit write.
+- Ordinary Trino planning may inspect connector metadata and statistics, but it does not
+  execute table scans; live parity tests verify valid, semantic-invalid, and allow-list
+  outcomes over both transports.
+- The distributed plan is intentionally opaque text. Consumers may show or reason over it,
+  but must not parse it as a version-stable API.
+
+**Alternatives considered**:
+
+- **`EXPLAIN (TYPE VALIDATE)` only**: rejected because it supplies no plan summary.
+- **Two calls, VALIDATE then DISTRIBUTED**: rejected because distributed planning already
+  performs semantic validation and the extra request adds no new verdict.
+- **`EXPLAIN ANALYZE`**: rejected because Trino executes the query and collects runtime
+  statistics, crossing the no-scan boundary before row/scan caps exist.
+- **Return semantic failures as MCP `isError: true`**: rejected because the tool completed
+  its job and produced an actionable negative verdict; protocol/tool errors remain for
+  guardrail, access, and infrastructure failures.
+- **Ship `sample_rows` in the same slice without audit/budget**: rejected because temporary
+  contract violations are exactly how controls become permanently optional.
+
+**Revisit if**: Real queries routinely hit the plan cap, Trino changes distributed-plan
+output enough to make text unusable, planning itself needs budget accounting, or the agent
+requires a stable structured plan representation rather than an opaque diagnostic aid.

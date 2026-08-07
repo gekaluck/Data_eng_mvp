@@ -341,9 +341,9 @@ and `schema_warnings` is empty. If it fails or warns:
 ### Check the MCP metadata server manually
 
 The server has one tool registry and two frontends. The most useful manual check exercises
-both with the official MCP client, calls all five metadata tools, and verifies that a denied
-table returns `isError: true` with the exact structured `TABLE_NOT_ALLOWED` envelope. It
-uses only fixed-shape metadata reads; it does not call CoinCap or scan Gold business rows.
+both with the official MCP client, calls all five metadata tools plus `explain_query`, and
+verifies both semantic and allow-list denials. It uses only fixed-shape metadata reads and
+ordinary `EXPLAIN`; it does not call CoinCap or scan Gold business rows.
 
 With Trino running locally:
 
@@ -355,8 +355,16 @@ docker run --rm --mount "type=bind,source=$repoRoot,target=/workspace" `
 ```
 
 Expected: separate `stdio` and `streamable-http` reports list exactly `list_tables`,
-`get_table_schema`, `get_table_snapshots`, `get_lineage`, and `get_model_docs`; both report
-the same first allow-listed table and `denial_code: TABLE_NOT_ALLOWED`.
+`get_table_schema`, `get_table_snapshots`, `get_lineage`, `get_model_docs`, and
+`explain_query`. Both report the same first allow-listed table, `explain_valid: true`,
+`semantic_denial_code: COLUMN_NOT_FOUND`, and `denial_code: TABLE_NOT_ALLOWED`.
+
+`plan_chars` is the bounded distributed plan returned by Trino. If `explain_query` returns
+`valid: false`, inspect its `diagnostic.code`, `message`, and optional line/column before
+changing the SQL. A structured retryable `ENGINE_ERROR` instead means planning could not
+reach Trino; a non-retryable access error means the restricted `agent` configuration has
+drifted. Never replace the server-owned `EXPLAIN` with `EXPLAIN ANALYZE`, which executes the
+query and violates this tool's no-scan boundary.
 
 To wire a local MCP host directly, install `ai_agent/requirements.txt` in Python 3.12 and
 configure this stdio command (it is also the default):

@@ -1,4 +1,4 @@
-"""End-to-end read-only smoke check for stdio and Streamable HTTP MCP."""
+"""End-to-end read-only smoke check for both local MCP frontends."""
 
 import argparse
 import asyncio
@@ -23,6 +23,7 @@ EXPECTED_TOOLS = {
     "get_table_snapshots",
     "get_lineage",
     "get_model_docs",
+    "explain_query",
 }
 Transport = Literal["stdio", "streamable-http"]
 
@@ -54,6 +55,26 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
         _require_success(name, result)
         outputs[name] = result.structuredContent
 
+    explained = await session.call_tool(
+        "explain_query",
+        arguments={"sql": f"SELECT * FROM {table} LIMIT 1"},
+    )
+    _require_success("explain_query", explained)
+    if explained.structuredContent.get("valid") is not True:
+        raise RuntimeError(f"Expected a valid scan-free plan: {explained}")
+
+    invalid = await session.call_tool(
+        "explain_query",
+        arguments={"sql": f"SELECT __mcp_missing_column__ FROM {table}"},
+    )
+    _require_success("explain_query semantic verdict", invalid)
+    if (
+        invalid.structuredContent.get("valid") is not False
+        or (invalid.structuredContent.get("diagnostic") or {}).get("code")
+        != "COLUMN_NOT_FOUND"
+    ):
+        raise RuntimeError(f"Semantic validation verdict failed: {invalid}")
+
     denied = await session.call_tool(
         "get_model_docs",
         arguments={"model": "not_allow_listed"},
@@ -73,6 +94,9 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
         "recent_snapshots": len(outputs["get_table_snapshots"]["snapshots"]),
         "lineage_nodes": len(outputs["get_lineage"]["nodes"]),
         "documented_columns": len(outputs["get_model_docs"]["columns"]),
+        "explain_valid": explained.structuredContent["valid"],
+        "plan_chars": len(explained.structuredContent["plan_summary"]),
+        "semantic_denial_code": invalid.structuredContent["diagnostic"]["code"],
         "denial_code": denied.structuredContent["code"],
     }
 
