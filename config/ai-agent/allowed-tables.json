@@ -4,6 +4,6 @@
     "gold.crypto_dbt.data_availability_daily",
     "gold.crypto_dbt.latest_market_snapshot",
     "gold.crypto_dbt.mc_rank_change",
-    "gold.crypto_dbt.wkly_roll_avg"
+    "gold.crypto_dbt.weekly_roll_avg"
   ]
 }

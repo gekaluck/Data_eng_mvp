@@ -5,8 +5,8 @@ What the platform still needs before Phase A of the AI-agent layer
 authority; this one is a punch list against the *running system*, checked on 2026-08-06.
 
 The design's own boundary (§2.2) is that the agent layer **extends, never modifies** the
-pipeline, and that the only platform-side additions are configuration. Everything in §B
-below is one of those additions — none of it exists yet.
+pipeline, and that the only platform-side additions are configuration. The §B additions are
+complete; this document now records the remaining operational and implementation gates.
 
 ---
 
@@ -68,8 +68,9 @@ All four gaps below are now closed by D035:
    empty entry point.
 8. ~~**Put the guardrail tests in CI.**~~ **Complete.** The isolated Python 3.12 job installs
    only the AI requirements and runs Ruff, `compileall`, and `pytest ai_agent/tests`. The
-   first 35 cases cover the allow-list, statement type, CTE resolution, table scope, time
-   travel, and structured error contract without starting the lakehouse stack.
+   current 50+ cases cover the allow-list, statement type, CTE resolution, table scope, time
+   travel, structured errors, dbt docs/lineage, live-metadata query shapes, and schema drift
+   behavior without starting the lakehouse stack.
 9. **Pin the model IDs, and say where the key lives.** R8 requires model IDs in every eval
    report. Decide the pinned models for both profiles at implementation time (the current
    family is Claude Opus 5 / Sonnet 5 rather than anything the design doc names), and add
@@ -83,9 +84,10 @@ All four gaps below are now closed by D035:
 
 ## Suggested order
 
-**Current position (2026-08-06): B1-B4 and D7/D8 are complete, and the first guardrail
-slice is implemented.** Next build the metadata adapters/tools and MCP transports. C6
-belongs in the eval harness, D9 at the provider boundary, and D10 in tool result metadata.
+**Current position (2026-08-06): B1-B4 and D7/D8 are complete; the strict guardrail core and
+all five metadata adapters/tools are implemented (D036–D037).** Next expose those methods
+through MCP stdio and streamable-HTTP transports. C6 belongs in the eval harness, D9 at the
+provider boundary, and D10 in query-result metadata.
 
 The ordering below is retained as the original plan and completion trail.
 

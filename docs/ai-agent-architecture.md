@@ -82,7 +82,9 @@ flowchart TB
 
 All tools return either a typed result or a **structured error**: `{code, message, retryable, hint}`. Error codes: `PARSE_ERROR`, `NOT_READ_ONLY`, `TABLE_NOT_ALLOWED`, `BUDGET_EXCEEDED`, `TIMEOUT`, `ENGINE_ERROR`. The agent loop's reflect/retry behavior keys off `code` and `retryable` — this contract is what makes the loop designable at all.
 
-Cost classes: **free** (server-side metadata, no engine work, no budget charge), **cheap** (engine planning, small budget charge), **expensive** (engine scan, full budget charge + full guardrail path).
+Cost classes: **free** (dbt or engine metadata only, no business-data scan and no budget
+charge), **cheap** (engine planning, small budget charge), **expensive** (engine scan, full
+budget charge + full guardrail path).
 
 | Tool | Input | Output | Cost |
 |------|-------|--------|------|
@@ -97,6 +99,19 @@ Cost classes: **free** (server-side metadata, no engine work, no budget charge),
 
 Contract notes that matter:
 
+- The five metadata tools are implemented as transport-neutral Python methods (D037).
+  `list_tables`, `get_model_docs`, and `get_lineage` fail closed over the published dbt
+  artifact pair and expose only allow-listed Gold models as queryable. `get_table_schema`
+  and `get_table_snapshots` issue adapter-owned, fixed-shape statements as the restricted
+  Trino `agent`; they do not accept SQL from a caller.
+- Iceberg remains schema truth. dbt descriptions fill otherwise-empty live comments, and
+  column-set disagreement is returned in `warnings`. `nullable` is `null` when Trino does
+  not report a constraint; an empty partition/sort order means the live metadata exposes no
+  such layout. No semantic field is guessed to make the response look complete.
+- `approx_rows` is nullable because dbt's Trino catalog currently reports no row-count
+  statistic. Current-snapshot `row_count` and `size_bytes` remain available from Iceberg's
+  `$files` metadata through `get_table_schema`; logical rows subtract active position and
+  equality delete records from physical data-file records.
 - `execute_query` **always** returns `truncated` and scan stats. Truncation must reach the final answer as a caveat — a truncated result presented as complete is a silent-wrongness failure mode (§7, F9).
 - Every `execute_query`/`sample_rows` call is written to an **audit log** (SQL, validation verdict, stats, timestamp, client) before results return. Under R2 this is a debugging/eval instrument, not a compliance one — but it becomes the compliance instrument if R2 ever changes.
 - The server is stateless per call except budget accounting, which is scoped to a client-supplied `request_id` (one NL question = one request_id = one budget).
@@ -118,11 +133,14 @@ Three layers with explicitly different jobs (Decision D4). The tool layer is ric
 | Resource group | Engine | Trino resource group: soft memory, concurrency/queue, hourly physical-scan quota | Repeated or concurrent scans that dodge tool-layer caps; the tool layer still owns per-query timeout |
 | Behavioral steering | Prompt | System-prompt scope rules ("only answer from available tables", "always cite SQL") | Nothing — advisory only, and the doc says so |
 
-**Implementation status (2026-08-06, D036).** The first tool-layer slice is live:
+**Implementation status (2026-08-06, D036–D037).** The first guardrail slice is live:
 single-statement Trino parsing, a root-`SELECT` whitelist, explicit `SELECT INTO` denial,
 CTE-aware fully qualified physical-table extraction, exact allow-list checks, and structured
-errors. Row/scan caps, budgets, audit logging, adapters, and transports are still unbuilt;
-the engine controls from D035 remain the only execution backstop until those land.
+errors. The five catalog metadata tools are also live behind transport-neutral interfaces,
+including allow-list-filtered dbt docs/lineage and fixed-shape Iceberg schema, file-stat, and
+snapshot reads. Row/scan caps, budgets, audit logging, arbitrary query execution, and MCP
+transports are still unbuilt; the engine controls from D035 remain the only execution
+backstop until those land.
 
 Design stance worth defending: the AST validator is the **primary** control because it is deterministic, unit-testable, and LLM-independent — you can prove properties about it that you cannot prove about a prompt. The engine backstop exists because the validator is code and code has bugs; a `CREATE TABLE` that somehow survives parsing dies at the grant check. Defense in depth, with each layer catching a different failure class.
 
