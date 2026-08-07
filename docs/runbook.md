@@ -410,6 +410,26 @@ Do not work around that validation to expose the server remotely: this slice has
 authentication design. HTTP 421 responses usually mean the client's `Host` or `Origin`
 header is outside the explicit loopback DNS-rebinding allow-list.
 
+### A budgeted tool refuses with `BUDGET_EXCEEDED`, or eval efficiency numbers drift
+
+Budgets are process-local and keyed by `request_id`, and nothing resets them for the life of
+the server (D040) — there is no "request complete" call. A long-lived streamable-HTTP server
+(the A2 eval transport) keeps every `request_id`'s token count until it restarts. Two
+consequences bite the eval harness (§6), not single interactive questions:
+
+- **A reused `request_id` resumes an old budget.** Driving several runs against one server
+  process means a question that reuses an ID from an earlier run starts partway through — or
+  already past — its token limit, so it refuses with `BUDGET_EXCEEDED` or spends fewer tokens
+  than a cold request would, quietly skewing the efficiency and stability metrics. Give every
+  `(question, run)` a unique `request_id`, or restart the server between runs; both make each
+  question start cold.
+- **The budget map only grows.** One ID per question over a long-running process accumulates
+  in memory — negligible at this scale but unbounded in principle. A bounded eviction is
+  expected to land with `execute_query`, which shares the same budget.
+
+For a single interactive question none of this applies: pick one ID, keep the profile fixed,
+and let the process own it.
+
 ### History backfill succeeded but expected dates are missing
 
 Check:
