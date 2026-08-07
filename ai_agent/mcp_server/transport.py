@@ -1,4 +1,4 @@
-"""MCP frontends for governed metadata, planning, and capped row sampling."""
+"""MCP frontends for governed metadata, planning, sampling, and execution."""
 
 import argparse
 import json
@@ -31,6 +31,13 @@ from ai_agent.mcp_server.metadata_models import (
     TableSummary,
 )
 from ai_agent.mcp_server.metadata_tools import MetadataTools
+from ai_agent.mcp_server.query_executor import (
+    DEFAULT_MAX_ROWS,
+    MAX_QUERY_ROWS,
+    ExecutedQuery,
+    QueryExecutor,
+    TrinoCappedRunner,
+)
 from ai_agent.mcp_server.query_explainer import (
     MAX_SQL_CHARS,
     QueryExplainer,
@@ -98,6 +105,10 @@ class SampleRowsOutput(RootModel[SampleRows | ToolErrorPayload]):
     """Advertised output schema for sample_rows."""
 
 
+class ExecuteQueryOutput(RootModel[ExecutedQuery | ToolErrorPayload]):
+    """Advertised output schema for execute_query."""
+
+
 READ_ONLY_ANNOTATIONS = ToolAnnotations(
     readOnlyHint=True,
     destructiveHint=False,
@@ -153,10 +164,11 @@ def build_metadata_tools() -> MetadataTools:
     )
 
 
-def build_query_tools() -> tuple[QueryExplainer, QuerySampler]:
-    """Compose planning/sampling around one shared process-local budget."""
+def build_query_tools() -> tuple[QueryExplainer, QuerySampler, QueryExecutor]:
+    """Compose all engine-backed tools around one shared budget and audit."""
     allow_list = TableAllowList.from_file()
     budget = RequestBudgetManager()
+    audit = JsonlAuditLog.from_env()
     return (
         QueryExplainer(
             TrinoDbApiRunner.from_env(source="ai-explain-query"),
@@ -167,7 +179,13 @@ def build_query_tools() -> tuple[QueryExplainer, QuerySampler]:
             TrinoDbApiRunner.from_env(source="ai-sample-rows"),
             allow_list,
             budget,
-            JsonlAuditLog.from_env(),
+            audit,
+        ),
+        QueryExecutor(
+            TrinoCappedRunner.from_env(),
+            allow_list,
+            budget,
+            audit,
         ),
     )
 
@@ -177,17 +195,23 @@ def create_mcp_server(
     *,
     query_explainer: QueryExplainer | None = None,
     query_sampler: QuerySampler | None = None,
+    query_executor: QueryExecutor | None = None,
     http: HttpSettings | None = None,
 ) -> FastMCP:
     """Create one MCP server whose tools are identical on both transports."""
     tools = metadata_tools or build_metadata_tools()
-    if (query_explainer is None) != (query_sampler is None):
+    supplied_query_tools = (
+        query_explainer is not None,
+        query_sampler is not None,
+        query_executor is not None,
+    )
+    if any(supplied_query_tools) and not all(supplied_query_tools):
         raise ValueError(
-            "query_explainer and query_sampler must be supplied together so they "
-            "share one request budget; pass both or neither."
+            "query_explainer, query_sampler, and query_executor must be supplied "
+            "together so they share one request budget; pass all three or none."
         )
     if query_explainer is None:
-        query_explainer, query_sampler = build_query_tools()
+        query_explainer, query_sampler, query_executor = build_query_tools()
     settings = http or HttpSettings.from_env()
     transport_security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
@@ -201,9 +225,9 @@ def create_mcp_server(
     server = FastMCP(
         SERVER_NAME,
         instructions=(
-            "Read-only metadata, scan-free SQL planning, and capped audited samples "
-            "for the explicitly allow-listed dbt Gold catalog. This server never "
-            "executes caller-supplied SQL."
+            "Read-only metadata and governed SQL tools for the explicitly allow-listed "
+            "dbt Gold catalog. Caller SQL is AST-validated, budgeted, row/scan/time "
+            "capped, and audited before analytical results return."
         ),
         host=settings.host,
         port=settings.port,
@@ -213,7 +237,7 @@ def create_mcp_server(
         transport_security=transport_security,
     )
     register_metadata_tools(server, tools)
-    register_query_tools(server, query_explainer, query_sampler)
+    register_query_tools(server, query_explainer, query_sampler, query_executor)
     return server
 
 
@@ -233,9 +257,7 @@ def register_metadata_tools(server: FastMCP, tools: MetadataTools) -> None:
     ) -> Annotated[CallToolResult, ListTablesOutput]:
         """List allow-listed dbt Gold tables and their semantic descriptions."""
         return _invoke(
-            lambda: TableListPayload(
-                tables=tools.list_tables(schema=schema, tag=tag)
-            )
+            lambda: TableListPayload(tables=tools.list_tables(schema=schema, tag=tag))
         )
 
     @server.tool(annotations=READ_ONLY_ANNOTATIONS)
@@ -245,7 +267,7 @@ def register_metadata_tools(server: FastMCP, tools: MetadataTools) -> None:
             Field(min_length=1, description="Fully qualified allow-listed table."),
         ],
     ) -> Annotated[CallToolResult, TableSchemaOutput]:
-        """Get authoritative live Iceberg columns, layout, stats, and dbt annotations."""
+        """Get live Iceberg columns, layout, stats, and dbt annotations."""
         return _invoke(lambda: tools.get_table_schema(table))
 
     @server.tool(annotations=READ_ONLY_ANNOTATIONS)
@@ -301,8 +323,9 @@ def register_query_tools(
     server: FastMCP,
     explainer: QueryExplainer,
     sampler: QuerySampler,
+    executor: QueryExecutor,
 ) -> None:
-    """Register budgeted planning/sampling separately from future arbitrary execution."""
+    """Register the three tools sharing one request-level engine-call budget."""
 
     @server.tool(annotations=READ_ONLY_ANNOTATIONS)
     def explain_query(
@@ -382,6 +405,50 @@ def register_query_tools(
             )
         )
 
+    @server.tool(annotations=READ_ONLY_ANNOTATIONS)
+    def execute_query(
+        sql: Annotated[
+            str,
+            Field(
+                min_length=1,
+                max_length=MAX_SQL_CHARS,
+                description=(
+                    "One fully qualified, allow-listed Trino SELECT to execute."
+                ),
+            ),
+        ],
+        request_id: Annotated[
+            str,
+            Field(
+                min_length=1,
+                max_length=MAX_REQUEST_ID_CHARS,
+                pattern=REQUEST_ID_PATTERN,
+                description="Stable ID for one natural-language question.",
+            ),
+        ],
+        profile: Annotated[
+            BudgetProfile,
+            Field(description="Per-request engine-call budget profile."),
+        ],
+        max_rows: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_QUERY_ROWS,
+                description="Maximum rows to return; one extra detects truncation.",
+            ),
+        ] = DEFAULT_MAX_ROWS,
+    ) -> Annotated[CallToolResult, ExecuteQueryOutput]:
+        """Execute a SELECT with row, scan, time, budget, and audit limits."""
+        return _invoke(
+            lambda: executor.execute_query(
+                sql,
+                request_id=request_id,
+                profile=profile,
+                max_rows=max_rows,
+            )
+        )
+
 
 def _invoke(operation: Callable[[], PayloadT]) -> CallToolResult:
     try:
@@ -410,6 +477,7 @@ def run_server(
     metadata_tools: MetadataTools | None = None,
     query_explainer: QueryExplainer | None = None,
     query_sampler: QuerySampler | None = None,
+    query_executor: QueryExecutor | None = None,
     http: HttpSettings | None = None,
 ) -> None:
     """Run the same registered server over stdio or local Streamable HTTP."""
@@ -417,6 +485,7 @@ def run_server(
         metadata_tools,
         query_explainer=query_explainer,
         query_sampler=query_sampler,
+        query_executor=query_executor,
         http=http,
     )
     server.run(transport=transport)

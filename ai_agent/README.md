@@ -1,8 +1,8 @@
 # `ai_agent/` — AI-Agent Layer (Phase A)
 
-> **Status: runnable governed MCP layer.** Five catalog tools, budgeted scan-free
-> `explain_query`, and capped/audited `sample_rows` are exposed over MCP stdio and loopback
-> streamable HTTP. Capped arbitrary queries and the agent loop remain next.
+> **Status: runnable governed MCP query layer.** Five catalog tools, budgeted scan-free
+> `explain_query`, capped/audited `sample_rows`, and row/scan/time-bounded `execute_query`
+> are exposed over MCP stdio and loopback streamable HTTP. The owned agent loop is next.
 
 ## Purpose
 
@@ -65,11 +65,13 @@ python -m ai_agent.mcp_server --transport streamable-http
 
 The endpoint is `http://127.0.0.1:8000/mcp`. The HTTP frontend deliberately rejects
 non-loopback binds; remote or multi-user exposure requires a separate authentication and
-threat-model decision. `explain_query` and `sample_rows` require one stable `request_id`
-and a fixed `fast` or `thorough` profile; they share a three- or ten-call process-local
-budget. Samples are limited to 20 rows and audit to the gitignored
+threat-model decision. `explain_query`, `sample_rows`, and `execute_query` require one stable
+`request_id` and a fixed `fast` or `thorough` profile; they share a three- or ten-call
+process-local budget. Samples are limited to 20 rows. Analytical results default to 100 and
+never exceed 500 rows, cancel after 15 seconds or above an observed 100 MiB scan, and carry
+Trino work stats plus data caveats. Business reads audit to the gitignored
 `ai_agent/runtime/query-audit.jsonl` by default. See the runbook for the official-client
-parity smoke check and audit troubleshooting.
+parity smoke check and audit/limit troubleshooting.
 
 ## Building here
 

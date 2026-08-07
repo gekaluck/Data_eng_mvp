@@ -24,6 +24,7 @@ EXPECTED_TOOLS = {
     "get_model_docs",
     "explain_query",
     "sample_rows",
+    "execute_query",
 }
 Transport = Literal["stdio", "streamable-http"]
 
@@ -43,6 +44,7 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
         raise RuntimeError(f"Expected five allow-listed tables, got {len(tables)}.")
     table = tables[0]["table"]
     request = {"request_id": "smoke-request", "profile": "fast"}
+    semantic_request = {"request_id": "smoke-semantic", "profile": "fast"}
 
     calls = {
         "get_table_schema": {"table": table},
@@ -68,7 +70,7 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
         "explain_query",
         arguments={
             "sql": f"SELECT __mcp_missing_column__ FROM {table}",
-            **request,
+            **semantic_request,
         },
     )
     _require_success("explain_query semantic verdict", invalid)
@@ -86,6 +88,23 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
     _require_success("sample_rows", sampled)
     if len(sampled.structuredContent.get("rows", [])) > 2:
         raise RuntimeError(f"sample_rows exceeded its hard cap: {sampled}")
+
+    executed = await session.call_tool(
+        "execute_query",
+        arguments={
+            "sql": f"SELECT symbol FROM {table} ORDER BY symbol",
+            "max_rows": 1,
+            **request,
+        },
+    )
+    _require_success("execute_query", executed)
+    if (
+        len(executed.structuredContent.get("rows", [])) != 1
+        or executed.structuredContent.get("truncated") is not True
+        or not executed.structuredContent.get("query_id")
+        or executed.structuredContent.get("stats", {}).get("bytes_read") is None
+    ):
+        raise RuntimeError(f"Governed execution contract failed: {executed}")
 
     exhausted = await session.call_tool(
         "explain_query",
@@ -122,6 +141,11 @@ async def exercise_session(session: ClientSession) -> dict[str, Any]:
         "semantic_denial_code": invalid.structuredContent["diagnostic"]["code"],
         "sample_rows": len(sampled.structuredContent["rows"]),
         "sample_columns": len(sampled.structuredContent["columns"]),
+        "execute_rows": len(executed.structuredContent["rows"]),
+        "execute_truncated": executed.structuredContent["truncated"],
+        "execute_query_id": executed.structuredContent["query_id"],
+        "execute_stats": executed.structuredContent["stats"],
+        "execute_caveats": len(executed.structuredContent["caveats"]),
         "budget_denial_code": exhausted.structuredContent["code"],
         "denial_code": denied.structuredContent["code"],
     }
@@ -209,7 +233,9 @@ async def smoke(transports: Sequence[Transport]) -> dict[str, Any]:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Smoke-test live governed MCP transports.")
+    parser = argparse.ArgumentParser(
+        description="Smoke-test live governed MCP transports."
+    )
     parser.add_argument(
         "--transport",
         choices=("stdio", "streamable-http", "both"),
@@ -221,9 +247,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> None:
     args = parse_args(argv)
     transports: tuple[Transport, ...] = (
-        ("stdio", "streamable-http")
-        if args.transport == "both"
-        else (args.transport,)
+        ("stdio", "streamable-http") if args.transport == "both" else (args.transport,)
     )
     print(json.dumps(asyncio.run(smoke(transports)), indent=2))
 

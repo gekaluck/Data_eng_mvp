@@ -32,6 +32,28 @@ class SampleAuditEntry(MetadataModel):
     failure_code: ErrorCode | None = None
 
 
+class ExecuteAuditEntry(MetadataModel):
+    """One execute_query attempt; raw business-row values are never persisted."""
+
+    timestamp: datetime
+    client: str
+    request_id: str
+    profile: BudgetProfile
+    tool: Literal["execute_query"] = "execute_query"
+    sql: str
+    tables: tuple[str, ...] = ()
+    validation_verdict: Literal["allowed", "denied", "not_run"]
+    outcome: Literal["success", "error"]
+    columns: tuple[str, ...] = ()
+    row_count: int = 0
+    truncated: bool = False
+    query_id: str | None = None
+    rows_read: int = 0
+    bytes_read: int = 0
+    elapsed_ms: int
+    failure_code: ErrorCode | None = None
+
+
 class AuditWriteError(Exception):
     """The required audit record could not be persisted."""
 
@@ -39,7 +61,7 @@ class AuditWriteError(Exception):
 class AuditSink(Protocol):
     """Minimum append interface used by governed data-reading tools."""
 
-    def write(self, entry: SampleAuditEntry) -> None: ...
+    def write(self, entry: SampleAuditEntry | ExecuteAuditEntry) -> None: ...
 
 
 class JsonlAuditLog:
@@ -53,7 +75,7 @@ class JsonlAuditLog:
     def from_env(cls) -> "JsonlAuditLog":
         return cls(os.getenv("AI_AUDIT_LOG_PATH", str(DEFAULT_AUDIT_PATH)))
 
-    def write(self, entry: SampleAuditEntry) -> None:
+    def write(self, entry: SampleAuditEntry | ExecuteAuditEntry) -> None:
         line = json.dumps(
             entry.model_dump(mode="json"),
             sort_keys=True,

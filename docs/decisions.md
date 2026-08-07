@@ -1474,3 +1474,82 @@ required audit append fails, the sample fails closed with a non-retryable `ENGIN
 request resumption, or authenticated client identity; sampling needs deterministic ordering
 for an evaluated use case; or audit records become a compliance boundary rather than a
 local debugging/eval instrument.
+
+---
+
+## D041 — Arbitrary Reads Are Capped, Measured, Cancelled, and Audited
+**Date**: 2026-08-07
+**Status**: accepted
+
+**Decision**: Add `execute_query(sql, request_id, profile, max_rows=100)` as the only MCP
+tool that executes caller-supplied SQL. `max_rows` is bounded from 1 through 500. The D036
+AST and table allow-list run first; the server then preserves a smaller caller limit or
+injects `max_rows + 1` at the top-level query. It fetches at most that many rows, returns
+only `max_rows`, and uses the extra row to report exact tool-level truncation.
+
+Each execution consumes one token from the same D040 budget used by planning and sampling.
+The Trino call runs under a 15-second wall-clock limit and a 100 MiB processed-data limit.
+The runner polls the DB-API cursor's live protocol statistics and sends cancellation when
+either threshold is observed; timeout returns `TIMEOUT` and scan-cap refusal returns the new
+non-retryable `SCAN_LIMIT_EXCEEDED`. Because protocol statistics arrive in batches, the byte
+threshold is an abort threshold rather than a promise that the engine cannot overshoot it;
+D035's resource group remains the independent backstop.
+
+A successful result always includes columns, bounded rows, `truncated`, physical tables,
+Trino query ID, processed rows/bytes, elapsed milliseconds, and explicit coverage/null
+caveats. Every schema-valid execution invocation is appended to the shared local JSONL
+audit before its result or error returns. Audit entries retain SQL, verdict, shape, query
+ID, statistics, truncation, and failure code, but never business-row values. An audit write
+failure remains fail-closed.
+
+Finally, bound the process-local budget map to the 1,024 most recently used request IDs.
+This revises D040's process-lifetime retention detail: budgets are still process-local and
+have no explicit completion call, but the least-recently-used entry is evicted when the map
+is full. Normal two-minute requests are unaffected; a very old evicted ID starts cold if it
+is reused.
+
+**Why**:
+
+- **The result boundary needs two row counts.** Fetching one extra row distinguishes a
+  complete result from a tool-truncated result without materializing the unbounded tail.
+- **A request timeout is not a query timeout.** The Trino client's HTTP timeout applies per
+  protocol request. A monitored worker provides one wall-clock deadline across submission,
+  planning, scanning, and result retrieval and can actively cancel the engine query.
+- **Returned rows are not scan cost.** A one-row aggregate may read the whole table, so
+  `processedBytes` and `processedRows` must come from Trino rather than the result length.
+- **Silent incompleteness is worse than refusal.** Truncation and the known sparse-data
+  caveats travel with every result instead of depending on prompt instructions.
+- **The eval server must not leak request IDs forever.** A small LRU bound removes the
+  known unbounded-memory behavior without adding persistent state or a lifecycle API before
+  the owned agent exists.
+
+**Consequences**:
+
+- Both MCP transports advertise eight identical read-only tools; the complete governed
+  query surface now exists before the LLM agent loop.
+- SQL accepted by `execute_query` can scan Gold business data, but never write, reference
+  another catalog/schema, return more than 500 rows, run past the observed time/scan limits
+  without cancellation, or return without an audit record.
+- A fast request can spend its three calls on explain/sample/execute in any combination;
+  metadata remains free and failed engine attempts still spend their token.
+- Very fast queries may finish before a polling cancellation reaches Trino. Their final
+  statistics are still checked and an over-limit result is refused rather than returned.
+- The next slice is the owned natural-language agent loop, not another query primitive.
+
+**Alternatives considered**:
+
+- **Trust a caller-supplied `LIMIT`**: rejected because missing, oversized, expression-based,
+  or `FETCH ... WITH TIES` limits would make the result boundary caller-controlled.
+- **Wrap every query in an outer SELECT**: rejected because top-level AST limit rewriting
+  preserves ordered-query semantics more directly and avoids another derived-table layer.
+- **Use only the Trino HTTP request timeout**: rejected because it is per request, not one
+  deadline for the full query lifecycle.
+- **Estimate bytes from table metadata before execution**: rejected because predicates,
+  joins, connector pruning, and aggregates make the estimate too weak to enforce a result.
+- **Persist budget state**: still deferred; a bounded in-memory LRU matches the local
+  single-process threat model and prevents growth without a new service.
+
+**Revisit if**: Eval queries legitimately need more than 500 result rows, 15 seconds, or
+100 MiB; protocol-stat polling overshoot becomes material; multiple workers require shared
+budget state; an explicit request-completion API exists; or the caveats can be derived from
+versioned table metadata instead of the current conservative result-level set.
