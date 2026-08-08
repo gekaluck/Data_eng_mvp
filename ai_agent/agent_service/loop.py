@@ -1,9 +1,11 @@
 """Bounded state machine for one-shot natural-language lakehouse questions."""
 
 import asyncio
+import sys
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from time import monotonic
-from typing import Any
+from typing import Any, AsyncIterator
 from uuid import uuid4
 
 from ai_agent.agent_service.contracts import (
@@ -62,7 +64,7 @@ class AgentLoop:
         result: ExecutedQuery | None = None
 
         try:
-            async with self._gateway.session() as tools:
+            async with self._session_within(deadline) as tools:
                 catalog = await self._within(deadline, tools.list_tables())
                 plan = await self._llm(
                     deadline,
@@ -108,10 +110,17 @@ class AgentLoop:
                     deadline=deadline,
                 )
                 confidence.append("live_schema_loaded")
+                base_confidence = tuple(confidence)
 
                 feedback: str | None = None
+                critic_refinement_used = False
                 attempts = _PROFILE_ATTEMPTS[request.profile]
                 for attempt in range(1, attempts + 1):
+                    is_critic_refinement = critic_refinement_used
+                    confidence = list(base_confidence)
+                    caveats = []
+                    tables_used = ()
+                    result = None
                     draft = await self._llm(
                         deadline,
                         profile=request.profile,
@@ -130,6 +139,8 @@ class AgentLoop:
                     draft_error = self._draft_error(draft)
                     if draft_error:
                         feedback = draft_error
+                        if is_critic_refinement:
+                            break
                         continue
 
                     try:
@@ -142,7 +153,9 @@ class AgentLoop:
                             ),
                         )
                     except ToolCallError as exc:
-                        if not self._can_redraft(exc, attempt, attempts):
+                        if is_critic_refinement or not self._can_redraft(
+                            exc, attempt, attempts
+                        ):
                             return self._tool_refusal(
                                 request,
                                 request_id,
@@ -159,7 +172,7 @@ class AgentLoop:
                             if diagnostic
                             else "Trino rejected the query semantics."
                         )
-                        if attempt == attempts:
+                        if is_critic_refinement or attempt == attempts:
                             break
                         continue
                     confidence.append("sql_planned_by_trino")
@@ -174,7 +187,9 @@ class AgentLoop:
                             ),
                         )
                     except ToolCallError as exc:
-                        if not self._can_redraft(exc, attempt, attempts):
+                        if is_critic_refinement or not self._can_redraft(
+                            exc, attempt, attempts
+                        ):
                             return self._tool_refusal(
                                 request,
                                 request_id,
@@ -196,7 +211,7 @@ class AgentLoop:
                     )
                     if check_error:
                         feedback = check_error
-                        if attempt == attempts:
+                        if is_critic_refinement or attempt == attempts:
                             break
                         continue
                     caveats = list(result.caveats)
@@ -222,8 +237,9 @@ class AgentLoop:
                         )
                         if critic.verdict == "fail":
                             feedback = f"CRITIC failed: {critic.reason}"
-                            if attempt == attempts:
+                            if is_critic_refinement or attempt == attempts:
                                 break
+                            critic_refinement_used = True
                             continue
                         confidence.append("critic_passed")
 
@@ -388,6 +404,24 @@ class AgentLoop:
                 return await operation
         except TimeoutError as exc:
             raise LoopDeadlineExceeded from exc
+
+    @asynccontextmanager
+    async def _session_within(self, deadline: float) -> AsyncIterator[AgentTools]:
+        """Apply the remaining profile deadline to MCP setup, use, and teardown."""
+        manager = self._gateway.session()
+        tools = await self._within(deadline, manager.__aenter__())
+        try:
+            yield tools
+        except BaseException:
+            exc_type, exc, traceback = sys.exc_info()
+            suppressed = await self._within(
+                deadline,
+                manager.__aexit__(exc_type, exc, traceback),
+            )
+            if not suppressed:
+                raise
+        else:
+            await self._within(deadline, manager.__aexit__(None, None, None))
 
     @staticmethod
     def _plan_error(
