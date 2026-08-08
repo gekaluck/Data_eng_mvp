@@ -183,6 +183,22 @@ class FakeGateway:
         yield self.tools
 
 
+class SlowLifecycleGateway(FakeGateway):
+    def __init__(self, tools, *, setup_delay=0, teardown_delay=0):
+        super().__init__(tools)
+        self.setup_delay = setup_delay
+        self.teardown_delay = teardown_delay
+
+    @asynccontextmanager
+    async def session(self):
+        self.opened += 1
+        await asyncio.sleep(self.setup_delay)
+        try:
+            yield self.tools
+        finally:
+            await asyncio.sleep(self.teardown_delay)
+
+
 def run(loop, *, profile="fast", request_id="request-1"):
     return asyncio.run(
         loop.answer(
@@ -246,6 +262,55 @@ def test_thorough_critic_gets_one_refinement_then_passes():
         "answer",
     ]
     assert "CRITIC failed" in provider.calls[3]["prompt"]
+
+
+def test_thorough_refuses_when_the_single_critic_refinement_also_fails():
+    provider = FakeProvider(
+        plan=[plan()],
+        draft=[draft(), draft()],
+        critic=[
+            CriticDecision(verdict="fail", reason="first semantic mismatch"),
+            CriticDecision(verdict="fail", reason="refinement still mismatched"),
+        ],
+    )
+    tools = FakeTools(executions=[executed(), executed()])
+
+    result = run(AgentLoop(provider, FakeGateway(tools)), profile="thorough")
+
+    assert result.answer is None
+    assert "refinement still mismatched" in result.refusal_reason
+    assert [call["stage"] for call in provider.calls].count("critic") == 2
+    assert [name for name, _ in tools.calls].count("execute_query") == 2
+
+
+def test_refinement_failure_does_not_mix_sql_with_prior_execution_evidence():
+    invalid = QueryExplanation(
+        sql="bad",
+        tables=(TABLE,),
+        valid=False,
+        diagnostic=QueryDiagnostic(code="COLUMN_NOT_FOUND", message="missing"),
+    )
+    second_sql = "SELECT missing FROM gold.crypto_dbt.daily_snapshot"
+    provider = FakeProvider(
+        plan=[plan()],
+        draft=[draft(), draft(second_sql)],
+        critic=[CriticDecision(verdict="fail", reason="refine once")],
+    )
+    tools = FakeTools(
+        explanations=[
+            QueryExplanation(sql="first", tables=(TABLE,), valid=True),
+            invalid,
+        ],
+        executions=[executed()],
+    )
+
+    result = run(AgentLoop(provider, FakeGateway(tools)), profile="thorough")
+
+    assert result.answer is None
+    assert result.sql == second_sql
+    assert result.tables_used == ()
+    assert result.result_stats is None
+    assert "sql_planned_by_trino" not in result.confidence
 
 
 def test_plan_can_refuse_without_drafting_or_touching_business_rows():
@@ -413,6 +478,34 @@ def test_profile_wall_clock_deadline_forces_refusal(monkeypatch):
     assert result.answer is None
     assert "wall-clock limit" in result.refusal_reason
     assert result.sql is None
+
+
+def test_profile_deadline_covers_mcp_session_setup(monkeypatch):
+    monkeypatch.setitem(loop_module._PROFILE_TIMEOUTS, "fast", 0.001)
+
+    result = run(
+        AgentLoop(
+            FakeProvider(plan=[plan()]),
+            SlowLifecycleGateway(FakeTools(), setup_delay=0.02),
+        )
+    )
+
+    assert result.answer is None
+    assert "wall-clock limit" in result.refusal_reason
+
+
+def test_profile_deadline_covers_mcp_session_teardown(monkeypatch):
+    monkeypatch.setitem(loop_module._PROFILE_TIMEOUTS, "fast", 0.001)
+
+    result = run(
+        AgentLoop(
+            FakeProvider(plan=[plan(disposition="refuse", tables=())]),
+            SlowLifecycleGateway(FakeTools(), teardown_delay=0.02),
+        )
+    )
+
+    assert result.answer is None
+    assert "wall-clock limit" in result.refusal_reason
 
 
 def test_missing_request_id_is_generated_once_and_reused_by_tools():
