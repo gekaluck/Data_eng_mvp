@@ -1553,3 +1553,65 @@ is reused.
 100 MiB; protocol-stat polling overshoot becomes material; multiple workers require shared
 budget state; an explicit request-completion API exists; or the caveats can be derived from
 versioned table metadata instead of the current conservative result-level set.
+
+---
+
+## D042 — Owned Agent Loop Uses Pinned Claude 5 Structured Decisions
+**Date**: 2026-08-07
+**Status**: accepted
+
+**Decision**: Implement A2 as a separate loopback-only FastAPI service whose one-shot,
+bounded state machine consumes the streamable-HTTP MCP server as its only data/tool
+boundary. Pin `fast` to `claude-sonnet-5` with adaptive thinking and low effort; pin
+`thorough` to `claude-opus-5` with adaptive thinking and high effort plus a critic pass.
+Constrain every LLM state to a Pydantic JSON schema, and let deterministic code own table,
+sampling, retry, wall-clock, result-shape, and terminal-envelope limits.
+
+The two profiles share one loop:
+
+- `fast`: 30-second agent deadline, at most two SQL drafts, at most one sampled table,
+  deterministic checks only, and the MCP server's three engine-call tokens
+- `thorough`: 120-second deadline, at most four SQL drafts, at most two sampled tables,
+  deterministic checks plus a semantic critic, and ten MCP engine-call tokens
+
+Every request terminates with exactly one non-blank `answer` or `refusal_reason` plus the
+best-effort SQL (when drafting reached SQL), tables, Trino stats, caveats, passed checks,
+profile, stable request ID, model ID, and prompt version. Provider, MCP, deadline, budget,
+validation, execution, shape, or critic failures fail closed into that same envelope.
+`ANTHROPIC_API_KEY` is read only from the process environment; `.env.example` contains a
+placeholder and the real value remains in gitignored `.env`. No remote binding is allowed
+under the current unauthenticated trusted-local-user threat model.
+
+Claude 5 rejects non-default sampling parameters, so this decision supersedes the earlier
+"temperature 0" stability detail in the architecture/eval design. Reproducibility now pins
+model ID, effort, prompt version, golden-set version, allow-list hash, and the future Iceberg
+snapshot rather than sending an unsupported temperature.
+
+**Why**:
+
+- The MCP boundary remains the single enforcement point; the LLM cannot bypass SQL
+  validation, table scope, budgets, cancellation, or audit by importing core adapters.
+- A small structured provider seam makes the complete loop testable with deterministic
+  fakes and permits a no-cost live smoke against real MCP/Trino without calling Claude.
+- Different pinned models make the profile trade-off explicit: Sonnet minimizes latency for
+  routine questions; Opus spends more reasoning and adds a critic where accuracy matters.
+- The terminal envelope makes refusals, partial confidence, cost, model choice, and SQL
+  visible inputs to the upcoming execution-accuracy eval rather than log-only details.
+
+**Alternatives considered**:
+
+- **Free-running ReAct/tool loop**: rejected because the model would own termination and
+  could spend an unbounded number of calls before the MCP budget finally refused it.
+- **Call MCP core or Trino directly from FastAPI**: rejected because it creates a second
+  execution path and makes the service itself part of the enforcement boundary.
+- **Use one model for both profiles**: rejected because it hides the intended speed/accuracy
+  comparison; the eval should measure that trade-off rather than assume it away.
+- **Use temperature zero**: rejected because Claude 5 does not accept the parameter.
+- **Add the agent to Docker Compose now**: deferred; the local host process is the simplest
+  correct runtime while the eval harness is unfinished and avoids changing the stable data
+  platform for an optional consumer.
+
+**Revisit if**: the eval shows no useful accuracy/latency distinction between profiles;
+Claude model IDs or effort semantics change; multiple users require authentication and
+per-user state; conversation history becomes a requirement; the agent needs multi-query
+decomposition beyond bounded redrafts; or a stable deployment justifies its own container.

@@ -59,8 +59,11 @@ lands (D027).
       +--> MCP governed query server <-------+
            (stdio + loopback streamable HTTP)
                     |
+                    +--> local MCP clients
+                    |
                     v
-              local MCP clients
+              owned agent service
+              (loopback FastAPI; bounded one-shot loop)
 ```
 
 Everything from Bronze down runs over the **range the sync discovered**, not a fixed
@@ -150,6 +153,17 @@ migrated from local Airflow to the cloud.
   exposure is not an implicit configuration change; it requires an authentication decision
 - AI runtime and test dependencies live under `ai_agent/`; they are installed by an
   isolated CI job and are not part of the Airflow image (D036)
+- The owned agent is a separate loopback FastAPI process (`POST /v1/questions`) and uses the
+  streamable-HTTP MCP endpoint as its only data/tool boundary; it never imports the Trino or
+  metadata adapters directly
+- `fast` pins `claude-sonnet-5` with low effort, a 30-second deadline, at most two drafts,
+  and no critic. `thorough` pins `claude-opus-5` with high effort, a 120-second deadline, at
+  most four drafts, and a critic pass. Claude 5 adaptive thinking replaces the obsolete
+  temperature-zero setting (D042)
+- Every one-shot request reaches one typed terminal envelope. Deterministic checks require
+  the declared result columns exactly, execution only over planned tables, expected row
+  presence, and truncation disclosure; any exhausted budget, deadline, provider failure,
+  MCP failure, or failed confidence check becomes a refusal with best-effort SQL shown
 
 ### Serving Layer - Apache Superset
 - Runs as an optional Docker Compose profile for end-user exploration
@@ -288,6 +302,7 @@ The gold layer optimizes for the reader, not the writer.
 | Query engine   | Trino 477           | Docker         |
 | BI / serving   | Superset 6.0        | Docker         |
 | AI tool protocol | MCP Python SDK 1.x | Host / isolated runtime |
+| AI agent API    | FastAPI + Uvicorn | Host / isolated runtime |
 | Storage        | MinIO               | Docker         |
 | Table format   | Iceberg 1.5.x       | Spark plugin   |
 | Catalog        | JDBC                | Postgres       |

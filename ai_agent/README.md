@@ -1,8 +1,10 @@
 # `ai_agent/` — AI-Agent Layer (Phase A)
 
-> **Status: runnable governed MCP query layer.** Five catalog tools, budgeted scan-free
+> **Status: runnable governed MCP query layer and owned agent loop.** Five catalog tools, budgeted scan-free
 > `explain_query`, capped/audited `sample_rows`, and row/scan/time-bounded `execute_query`
-> are exposed over MCP stdio and loopback streamable HTTP. The owned agent loop is next.
+> are exposed over MCP stdio and loopback streamable HTTP. A separate loopback FastAPI
+> service turns one natural-language question into an answer or visible refusal. The eval
+> harness is next.
 
 ## Purpose
 
@@ -46,8 +48,8 @@ ruff check --select E9,F63,F7,F82 ai_agent
 
 The `AI guardrail tests` CI job runs the same dependency install, lint, compile, and pytest
 checks with fixture-backed metadata adapters, without starting Docker services or contacting
-Trino or an LLM provider. A separate opt-in, read-only live smoke command is documented in
-the runbook.
+Trino or an LLM provider. Separate opt-in live MCP and fake-provider end-to-end agent smoke
+commands are documented in the runbook; the latter never contacts a hosted model.
 
 ## Run the MCP server
 
@@ -72,6 +74,23 @@ never exceed 500 rows, cancel after 15 seconds or above an observed 100 MiB scan
 Trino work stats plus data caveats. Business reads audit to the gitignored
 `ai_agent/runtime/query-audit.jsonl` by default. See the runbook for the official-client
 parity smoke check and audit/limit troubleshooting.
+
+## Run the owned agent service
+
+Start the MCP HTTP frontend first, then expose `ANTHROPIC_API_KEY` from the gitignored
+`.env` to the current shell and start the agent on its separate loopback port:
+
+```powershell
+python -m ai_agent.mcp_server --transport streamable-http
+# In another PowerShell session, after loading ANTHROPIC_API_KEY:
+python -m ai_agent.agent_service
+```
+
+The agent endpoint is `POST http://127.0.0.1:8010/v1/questions`; it connects only to the MCP
+endpoint at `http://127.0.0.1:8000/mcp`. `fast` pins `claude-sonnet-5` with low effort and a
+30-second loop deadline; `thorough` pins `claude-opus-5` with high effort, a critic pass,
+and a 120-second deadline. Neither service may be bound remotely under the current trusted-
+local-user threat model. Exact environment loading and request commands are in the runbook.
 
 ## Building here
 

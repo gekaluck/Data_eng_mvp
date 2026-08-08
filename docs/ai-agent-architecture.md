@@ -1,6 +1,6 @@
 # AI-Agent Layer on the Lakehouse — Architecture
 
-**Status:** Design accepted · **Scope:** New module in the existing lakehouse repo. Extends (never modifies) the running Bronze/Silver/Gold platform: Airflow, PySpark, Iceberg, dbt, Trino on Docker.
+**Status:** Phase A MCP boundary and owned loop implemented; eval harness next · **Scope:** New module in the existing lakehouse repo. Extends (never modifies) the running Bronze/Silver/Gold platform: Airflow, PySpark, Iceberg, dbt, Trino on Docker.
 
 One track, three phases. Phase A is designed in full depth; Phases B and C are sketches with open questions.
 
@@ -163,7 +163,7 @@ Three layers with explicitly different jobs (Decision D4). The tool layer is ric
 | Resource group | Engine | Trino resource group: soft memory, concurrency/queue, hourly physical-scan quota | Repeated or concurrent scans that dodge tool-layer caps; the tool layer still owns per-query timeout |
 | Behavioral steering | Prompt | System-prompt scope rules ("only answer from available tables", "always cite SQL") | Nothing — advisory only, and the doc says so |
 
-**Implementation status (2026-08-07, D036–D041).** The Phase A query boundary is live:
+**Implementation status (2026-08-07, D036–D042).** The Phase A query boundary is live:
 single-statement Trino parsing, a root-`SELECT` whitelist, explicit `SELECT INTO` denial,
 CTE-aware fully qualified physical-table extraction, exact allow-list checks, and structured
 errors. The five catalog metadata tools are live over both MCP stdio and loopback
@@ -171,8 +171,9 @@ streamable HTTP, including allow-list-filtered dbt docs/lineage and fixed-shape 
 schema, file-stat, and snapshot reads. Scan-free `explain_query`, capped `sample_rows`, and
 row/scan/time-bounded `execute_query` share the request budget. Both business-data tools
 audit before return without retaining row values; execution includes Trino work stats and
-data caveats. The owned natural-language agent loop remains unbuilt; D035's engine controls
-still independently backstop every query tool.
+data caveats. The owned one-shot agent loop is also live as a separate loopback FastAPI
+process and consumes only the MCP HTTP boundary; D035's engine controls still independently
+backstop every query tool. The remaining Phase A implementation slice is the eval harness.
 
 Design stance worth defending: the AST validator is the **primary** control because it is deterministic, unit-testable, and LLM-independent — you can prove properties about it that you cannot prove about a prompt. The engine backstop exists because the validator is code and code has bugs; a `CREATE TABLE` that somehow survives parsing dies at the grant check. Defense in depth, with each layer catching a different failure class.
 
@@ -181,6 +182,11 @@ Design stance worth defending: the AST validator is the **primary** control beca
 ## 5. Phase A — Agent Loop Design
 
 A **bounded state machine with LLM decisions inside states** — not a fixed DAG, not a free-running ReAct loop (Decision D3).
+
+**Implementation status (D042).** `ai_agent.agent_service` implements this state machine and
+serves `POST /v1/questions` on loopback. PLAN, DRAFT, CRITIC, and ANSWER are constrained
+Pydantic decisions from a thin Claude provider; EXPLORE, VALIDATE, and EXECUTE use a real MCP
+client session. The service does not import or call the MCP core's Trino/metadata adapters.
 
 ```mermaid
 stateDiagram-v2
@@ -208,9 +214,21 @@ stateDiagram-v2
 
 **States.** `PLAN`: classify the question, shortlist tables via `list_tables` + `get_model_docs`; refuse immediately if Gold can't plausibly answer it. `EXPLORE`: `get_table_schema` (free), `sample_rows` only when value formats are genuinely ambiguous. `DRAFT`: generate SQL with schema + docs in context. `VALIDATE`: `explain_query` — catches syntax/semantic errors without spending a scan. `EXECUTE`: `execute_query`. `CHECK` (deterministic): execution succeeded; result non-empty when the question implies data should exist; column count/types plausible for the question shape; truncation noted. `CRITIC` (thorough only): second LLM call with `{question, sql, result_sample, schemas_used}` → `{verdict: pass|fail, reason}`; a fail buys exactly one refinement attempt, then refusal.
 
-**Terminal contract.** Every terminal state emits the same envelope: `{answer | refusal_reason, sql, tables_used, result_stats, caveats[], confidence: passed_checks[], profile, request_id}`. SQL is shown in every outcome including refusal (R3) — the user is never asked to trust an invisible query.
+**Terminal contract.** Every terminal state emits the same envelope: `{answer | refusal_reason, sql, tables_used, result_stats, caveats[], confidence: passed_checks[], profile, request_id, model_id, prompt_version}`. Exactly one of answer/refusal is non-blank. Best-effort SQL is shown whenever drafting reached SQL, including refusal (R3) — the user is never asked to trust an invisible query or a fabricated placeholder.
 
-**Budget profiles (R4).** One code path; `thorough` is a strict superset (adds critic + more retry tokens). The budget manager, not the LLM, decides when the loop stops: exhaustion forces a terminal state. This is the property a free ReAct loop can't give you and the reason the state machine exists.
+**Budget profiles (R4).** One code path; `thorough` is a strict superset (adds critic + more retry tokens). `fast` has a 30-second agent deadline, at most two drafts, at most one sampled table, and the MCP server's three engine-call tokens. `thorough` has a 120-second deadline, at most four drafts, at most two sampled tables, a critic after deterministic checks, and ten MCP engine-call tokens. The state machine, not the LLM, decides when the loop stops: deadline, retry, or MCP budget exhaustion forces a terminal refusal.
+
+**Pinned provider.** `fast` uses `claude-sonnet-5` with adaptive thinking and low effort;
+`thorough` uses `claude-opus-5` with adaptive thinking and high effort. Model IDs are pinned
+in code and returned in the envelope. Claude 5 rejects non-default sampling parameters, so
+the old "temperature 0" stability detail is superseded by exact model, effort, prompt, and
+golden-set pins (D042).
+
+**Deterministic CHECK.** A successful execution must return exactly the columns DRAFT
+declared, report at least one physical table and no table outside PLAN, contain rows when
+DRAFT said rows should exist, and propagate truncation. This gate is deliberately narrower
+than semantic correctness; thorough adds the critic, while the golden-set eval will measure
+what both still miss.
 
 **Statelessness (R9).** Each question starts cold. Schema exploration results are cacheable server-side (they're deterministic reads), so "cold" costs metadata calls, not scans.
 
@@ -232,7 +250,7 @@ stateDiagram-v2
 | Over-refusal rate | refusals / answerable set | The cost of the gate |
 | Refusal catch rate | refusals / unanswerable set | The value of the gate |
 | Efficiency | queries, wall time, tokens per question | Budget realism check |
-| Stability | accuracy variance across 3 runs, temperature 0 | Separates model noise from architecture |
+| Stability | accuracy variance across 3 runs with pinned model, effort, prompt, and data snapshot | Separates model noise from architecture |
 
 **Mechanics.** The harness drives the **agent service API** directly (not through an MCP host — A1's loop is a black box, which is exactly why A2 exists). Every report records: model ID, prompt version, allow-list hash, golden-set version, profile. A result that can't be tied to those five pins is not a result.
 
@@ -304,7 +322,7 @@ Revisit when: golden-set maintenance cost outgrows its value, or question volume
 
 **D9 — LLM runtime: hosted API, pinned models, thin provider interface.**
 Alternatives: local model (all-Docker purity); hard-wired single provider.
-Why: SQL-generation quality dominates every metric this project reports; a weak local model would make the evals measure the model, not the architecture. Pinning model IDs in eval reports is what keeps numbers comparable. The provider interface exists for cheap smoke tests, justified as eval infrastructure.
+Why: SQL-generation quality dominates every metric this project reports; a weak local model would make the evals measure the model, not the architecture. Pinning model IDs, effort, prompt, and data snapshot in eval reports is what keeps numbers comparable. The provider interface exists for cheap smoke tests, justified as eval infrastructure. D042 implements the hosted profiles as `claude-sonnet-5`/low and `claude-opus-5`/high with adaptive thinking; Claude 5 rejects the earlier temperature-zero assumption.
 Revisit when: local models reach near-parity on SQL benchmarks, or API cost of eval runs becomes the binding constraint.
 
 **D10 — Stateless one-shot agent.**

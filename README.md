@@ -11,10 +11,10 @@ concerns: explicit date propagation, separated regular vs. backfill flows, retri
 idempotent single-date replays, data tests in the orchestrated path, and two parallel
 Gold implementations (Spark and dbt) kept side by side for comparison.
 
-> **What's next:** the AI-agent layer now exposes five governed Gold metadata tools,
-> budgeted scan-free `explain_query`, and capped/audited `sample_rows` through MCP stdio
-> and loopback streamable HTTP. Governed `execute_query` adds row, scan, time, budget, and
-> audit enforcement; the owned text-to-analytics loop is next. See the
+> **What's next:** the AI-agent layer now includes the governed Gold MCP boundary and a
+> local one-shot text-to-analytics service. The bounded loop uses pinned Claude 5 models,
+> validates and executes SQL only through MCP, and refuses when its confidence checks fail.
+> The execution-accuracy eval harness is next. See the
 > [Roadmap](#roadmap) and [`docs/ai-agent-architecture.md`](docs/ai-agent-architecture.md).
 
 ---
@@ -45,6 +45,7 @@ flowchart TB
     TRINO["Trino<br/>SQL query engine"]
     SUPERSET["Superset<br/>dashboards & exploration"]
     MCP["MCP server<br/>metadata + governed query tools"]
+    AGENT["Owned agent service<br/>bounded NL-to-SQL loop"]
     MCPCLIENT["MCP clients"]
 
     API -->|ingest| BRONZE
@@ -60,6 +61,7 @@ flowchart TB
     TRINO -->|governed read-only calls| MCP
     DBT -.published artifacts.-> MCP
     MCP --> MCPCLIENT
+    MCP --> AGENT
     SILVER -.metadata.- CATALOG
     GOLD -.metadata.- CATALOG
 ```
@@ -231,23 +233,23 @@ The platform above is stable. The next track adds an **AI-agent layer** on top o
 Gold layer, designed in [`docs/ai-agent-architecture.md`](docs/ai-agent-architecture.md) (the source
 of truth for that work). It extends the platform without modifying any existing pipeline:
 
-- **Phase A — MCP server + text-to-analytics agent.** The MCP server currently exposes
+- **Phase A — MCP server + text-to-analytics agent.** The MCP server exposes
   governed, read-only Gold metadata (schema, snapshots, lineage, and dbt docs) over stdio
   and loopback streamable HTTP, plus budgeted scan-free SQL planning through
   `explain_query`, capped/audited row inspection through `sample_rows`, and governed
-  analytical reads through `execute_query`. A bounded-state-machine agent now remains to
-  turn natural-language questions into validated SQL with a confidence gate that refuses
-  rather than guesses. Includes an eval
-  harness scored on execution accuracy.
+  analytical reads through `execute_query`. The local agent service now turns one natural-
+  language question into validated SQL through a bounded state machine, with deterministic
+  checks, a thorough-mode critic, and a terminal answer-or-refusal envelope. The remaining
+  Phase A slice is the eval harness scored on execution accuracy.
 - **Phase B — RAG over catalog & lineage docs.** An Airflow DAG that chunks and embeds
   dbt/Iceberg catalog metadata into a vector store, surfaced to the agent as a
   `search_catalog` tool (sketch; open questions documented).
 - **Phase C — Feature-store bridge (Feast).** A thin Feast bridge reading Gold Iceberg
   tables through Trino, with feature definitions derived from existing dbt models (sketch).
 
-The Phase A implementation lives under [`ai_agent/`](ai_agent). Its complete governed MCP
-query boundary is runnable today; the owned agent loop and eval harness remain deliberately
-separate follow-up slices.
+The Phase A implementation lives under [`ai_agent/`](ai_agent). Its governed MCP query
+boundary and owned agent loop are runnable today; the eval harness remains a deliberately
+separate follow-up slice.
 
 ---
 

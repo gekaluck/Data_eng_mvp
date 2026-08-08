@@ -69,15 +69,18 @@ All four gaps below are now closed by D035:
    empty entry point.
 8. ~~**Put the guardrail tests in CI.**~~ **Complete.** The isolated Python 3.12 job installs
    only the AI requirements and runs Ruff, `compileall`, and `pytest ai_agent/tests`. The
-   current 145 cases cover the allow-list, statement type (including read-only set
+   current 181 cases cover the allow-list, statement type (including read-only set
    operations refused without being mislabelled as writes), CTE resolution, table scope,
    time travel, structured errors, dbt docs/lineage, live-metadata query shapes, schema
    drift, bounded shared/concurrent budgets, capped sampling/execution, cancellation,
-   audit records, and MCP contracts without starting the lakehouse stack.
-9. **Pin the model IDs, and say where the key lives.** R8 requires model IDs in every eval
-   report. Decide the pinned models for both profiles at implementation time (the current
-   family is Claude Opus 5 / Sonnet 5 rather than anything the design doc names), and add
-   `ANTHROPIC_API_KEY` to `.env.example` as a placeholder — never a real value in the repo.
+   audit records, MCP contracts, structured hosted-model decisions, state transitions,
+   retries, confidence checks, terminal envelopes, and the FastAPI boundary without
+   contacting Trino or a hosted model.
+9. ~~**Pin the model IDs, and say where the key lives.**~~ **Complete (D042).** `fast` pins
+   `claude-sonnet-5`; `thorough` pins `claude-opus-5`. Every terminal envelope records the
+   selected model and `agent-loop-v1` prompt version. `ANTHROPIC_API_KEY` has only a
+   placeholder in `.env.example`; the real value belongs in gitignored `.env` and must be
+   exposed to the agent process explicitly.
 10. ~~**Carry the data caveats into tool output, not just the prompt.**~~ **Complete
     (D041).** Every `execute_query` result carries conservative sparse-coverage and
     by-design-null caveats alongside exact truncation and Trino statistics;
@@ -87,12 +90,14 @@ All four gaps below are now closed by D035:
 
 ## Suggested order
 
-**Current position (2026-08-07): B1-B4 and D7/D8 are complete; the strict guardrail core,
+**Current position (2026-08-07): B1-B4 and D7-D10 are complete; the strict guardrail core,
 all five metadata adapters/tools, their MCP stdio plus loopback streamable-HTTP frontends,
 budgeted scan-free `explain_query`, capped/audited `sample_rows`, and governed
 `execute_query` with row/scan/time caps, cancellation, Trino stats, audit, and data caveats
-are implemented (D036–D041).** The MCP query boundary is complete; next build the owned
-agent loop. C6 belongs in the eval harness and D9 at the provider boundary.
+are implemented (D036–D041). The owned one-shot agent loop, pinned Claude 5 provider,
+deterministic confidence gate, thorough-mode critic, terminal envelope, and loopback FastAPI
+service are implemented in D042.** The remaining Phase A slice is the golden-set eval
+harness; C6's Iceberg snapshot pin belongs there.
 
 The ordering below is retained as the original plan and completion trail.
 
