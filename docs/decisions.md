@@ -1615,3 +1615,70 @@ snapshot rather than sending an unsupported temperature.
 Claude model IDs or effort semantics change; multiple users require authentication and
 per-user state; conversation history becomes a requirement; the agent needs multi-query
 decomposition beyond bounded redrafts; or a stable deployment justifies its own container.
+
+---
+
+## D043 — Full Local Agent Traces Are the Default Debugging Evidence
+**Date**: 2026-08-10
+**Status**: accepted
+
+**Decision**: Add an append-only, ordered JSONL trace around the complete owned-agent
+request and make `full` the default for this trusted-local learning project. Each event
+carries the request ID, profile, pinned model, prompt version, monotonic sequence, stage,
+attempt, elapsed time, duration, status, and compact metadata. Full event content retains:
+
+- the natural-language request and terminal answer or refusal
+- rendered system/user prompts, structured input, output schema, and model decision
+- provider response ID, stop reason, and input/output/cache token usage
+- MCP tool name, arguments, typed result or error, and operation timing
+- drafted/validated/executed SQL, returned rows, truncation, and Trino query ID
+- deterministic checks, critic output, retry feedback, and the terminal envelope
+
+The default file is the gitignored `ai_agent/runtime/agent-trace.jsonl`. A concise event
+envelope is also logged to stderr. `AI_TRACE_LEVEL=basic` keeps event metadata and timing
+but removes all `content`; `off` disables the trace. `AI_AGENT_TRACE_PATH` changes the local
+destination and `AI_LOG_LEVEL` controls console verbosity.
+
+Credentials, environment variables, and HTTP/MCP transport headers are outside the trace
+contract and are never recorded. This does not make full traces non-sensitive: questions,
+prompts, Gold rows, and answers may contain private or identifying data. Privacy is an
+explicit accepted consideration—not presently a blocker—because Phase A has one trusted
+human, loopback-only services, allow-listed analytical Gold data, and a local gitignored
+sink. The file is debugging/eval evidence, not a compliance log or safe artifact to share.
+
+Trace writes fail open and emit an error log. This is intentionally different from the MCP
+query audit: the audit is an enforcement-boundary record, excludes business-row values, and
+fails closed before a data read returns. A full request trace is downstream observability;
+an unwritable trace must not turn an otherwise governed answer into a refusal.
+
+**Why**:
+
+- One request ID now reconstructs why a plausible answer was produced: model inputs and
+  decisions, tool evidence, SQL, checks, retries, costs, query IDs, and final wording.
+- Structured JSONL is immediately useful with PowerShell and Python and can feed the next
+  golden-set eval without introducing an observability service or dependency.
+- `full`, `basic`, and `off` make the data-retention tradeoff explicit rather than hiding it
+  in scattered logging statements.
+- Separating debugging trace guarantees from enforcement audit guarantees preserves both
+  availability and the existing governed data boundary.
+
+**Alternatives considered**:
+
+- **Metadata-only tracing by default**: rejected for the current project because it cannot
+  explain semantic mistakes in prompts, rows, or final synthesis; retained as `basic` for a
+  future less-trusted environment.
+- **Only terminal API envelopes plus the MCP query audit**: rejected because neither shows
+  model decisions, retry feedback, tool exploration, token usage, or returned evidence.
+- **OpenTelemetry plus an external collector/UI now**: deferred because it adds services,
+  configuration, and retention policy before the project needs distributed tracing.
+- **Fail closed when the trace cannot be written**: rejected because monitoring is not an
+  authorization control and should not suppress a safe governed result.
+- **Automatic content redaction**: deferred because a reliable policy requires knowing the
+  future data/user boundary; false confidence from partial redaction is worse than clearly
+  labeling the full local trace as sensitive.
+
+**Revisit if**: a second user is introduced; either HTTP service is exposed beyond
+loopback; questions or Gold models begin carrying personal, customer, regulated, or secret
+data; traces leave the workstation; retention/rotation becomes operationally material; a
+compliance requirement appears; or the eval/monitoring workload justifies OpenTelemetry,
+central storage, access controls, encryption, sampling, and field-level redaction.

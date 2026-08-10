@@ -2,7 +2,8 @@
 
 import json
 import os
-from typing import Protocol, TypeVar
+from dataclasses import dataclass
+from typing import Generic, Protocol, TypeVar
 
 from pydantic import BaseModel
 
@@ -19,6 +20,26 @@ class ProviderError(Exception):
     """The hosted model could not return a usable structured decision."""
 
 
+@dataclass(frozen=True, slots=True)
+class LlmUsage:
+    """Provider-reported token counts retained for traces and eval efficiency."""
+
+    input_tokens: int
+    output_tokens: int
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class LlmGeneration(Generic[OutputT]):
+    """One validated decision plus provider response metadata."""
+
+    output: OutputT
+    response_id: str | None = None
+    stop_reason: str | None = None
+    usage: LlmUsage | None = None
+
+
 class StructuredLlm(Protocol):
     """Small provider seam used by production Claude and deterministic test fakes."""
 
@@ -32,7 +53,7 @@ class StructuredLlm(Protocol):
         system: str,
         prompt: str,
         output_type: type[OutputT],
-    ) -> OutputT: ...
+    ) -> LlmGeneration[OutputT]: ...
 
 
 class AnthropicStructuredLlm:
@@ -70,7 +91,7 @@ class AnthropicStructuredLlm:
         system: str,
         prompt: str,
         output_type: type[OutputT],
-    ) -> OutputT:
+    ) -> LlmGeneration[OutputT]:
         """Return one validated decision; Claude refusals and truncation fail closed."""
         effort = "low" if profile == "fast" else "high"
         max_tokens = 4_096 if profile == "fast" else 12_000
@@ -105,8 +126,28 @@ class AnthropicStructuredLlm:
                 f"Claude {stage} returned {len(text_blocks)} text blocks; expected one."
             )
         try:
-            return output_type.model_validate(json.loads(text_blocks[0]))
+            output = output_type.model_validate(json.loads(text_blocks[0]))
         except Exception as exc:
             raise ProviderError(
                 f"Claude {stage} returned an invalid structured response."
             ) from exc
+        usage = getattr(response, "usage", None)
+        return LlmGeneration(
+            output=output,
+            response_id=getattr(response, "id", None),
+            stop_reason=stop_reason,
+            usage=(
+                LlmUsage(
+                    input_tokens=int(getattr(usage, "input_tokens", 0)),
+                    output_tokens=int(getattr(usage, "output_tokens", 0)),
+                    cache_creation_input_tokens=int(
+                        getattr(usage, "cache_creation_input_tokens", 0) or 0
+                    ),
+                    cache_read_input_tokens=int(
+                        getattr(usage, "cache_read_input_tokens", 0) or 0
+                    ),
+                )
+                if usage is not None
+                else None
+            ),
+        )

@@ -29,8 +29,15 @@ class FakeMessages:
 
 def response(payload, *, stop_reason="end_turn"):
     return SimpleNamespace(
+        id="message-1",
         stop_reason=stop_reason,
         content=(SimpleNamespace(type="text", text=json.dumps(payload)),),
+        usage=SimpleNamespace(
+            input_tokens=101,
+            output_tokens=23,
+            cache_creation_input_tokens=7,
+            cache_read_input_tokens=11,
+        ),
     )
 
 
@@ -60,7 +67,7 @@ def test_provider_pins_models_effort_and_structured_output(
         thorough_model="claude-opus-5",
     )
 
-    decision = asyncio.run(
+    generation = asyncio.run(
         provider.generate(
             profile=profile,
             stage="plan",
@@ -70,7 +77,13 @@ def test_provider_pins_models_effort_and_structured_output(
         )
     )
 
-    assert decision.disposition == "answer"
+    assert generation.output.disposition == "answer"
+    assert generation.response_id == "message-1"
+    assert generation.stop_reason == "end_turn"
+    assert generation.usage.input_tokens == 101
+    assert generation.usage.output_tokens == 23
+    assert generation.usage.cache_creation_input_tokens == 7
+    assert generation.usage.cache_read_input_tokens == 11
     call = messages.calls[0]
     assert call["model"] == model
     assert call["max_tokens"] == max_tokens

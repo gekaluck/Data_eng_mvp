@@ -485,6 +485,62 @@ Expected: HTTP 200 with exactly one of `answer` or `refusal_reason`, plus `sql`,
 refusals, not HTTP 500 answers fabricated from model memory. Invalid request shape/profile
 returns HTTP 422.
 
+Every production request also appends an ordered trace to
+`ai_agent/runtime/agent-trace.jsonl`. The trusted-local default is `full`: it includes the
+question, rendered prompts and schemas, structured model decisions and token usage, MCP
+tool arguments/results, SQL, returned rows, checks, retries, Trino query IDs, and the final
+answer/refusal. Watch the concise console envelopes in Terminal 2, or inspect one request
+from another PowerShell terminal:
+
+```powershell
+$events = Get-Content ai_agent/runtime/agent-trace.jsonl |
+  ForEach-Object { $_ | ConvertFrom-Json }
+$events |
+  Where-Object request_id -eq 'manual-fast-1' |
+  Sort-Object sequence |
+  Select-Object sequence, event, stage, attempt, status, elapsed_ms, duration_ms
+```
+
+Inspect the SQL/result evidence and provider cost separately:
+
+```powershell
+$events |
+  Where-Object { $_.request_id -eq 'manual-fast-1' -and $_.event -eq 'tool.completed' } |
+  Select-Object metadata, content
+$events |
+  Where-Object { $_.request_id -eq 'manual-fast-1' -and $_.event -eq 'llm.completed' } |
+  Select-Object stage, attempt, duration_ms, metadata
+```
+
+The execution `tool.completed` metadata contains the Trino `query_id`; use the same
+`request_id` in `ai_agent/runtime/query-audit.jsonl` to correlate the full agent narrative
+with the MCP enforcement record. The query audit deliberately omits returned rows and fails
+closed if unwritable. The agent trace includes rows in `full` mode and fails open with an
+error log because observability is not an authorization boundary.
+
+Set trace behavior in the agent process before startup:
+
+```powershell
+$env:AI_TRACE_LEVEL = 'full'  # full | basic | off
+$env:AI_AGENT_TRACE_PATH = 'ai_agent/runtime/agent-trace.jsonl'
+$env:AI_LOG_LEVEL = 'INFO'
+```
+
+`basic` retains event names, correlation, timings, counts, query IDs, token usage, and other
+metadata but sets every event's `content` to null. `off` writes no request trace. Full mode
+does not record credentials, environment variables, or transport headers, but it **does**
+record questions, prompts, Gold result values, and answers. Treat it as sensitive local
+debug/eval data: it is gitignored, but do not attach or paste it without reviewing the
+content. Privacy is accepted for this single-user loopback learning project (D043), not
+declared irrelevant. If the file grows, stop the agent and archive it without overwriting an
+existing archive:
+
+```powershell
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+Move-Item -LiteralPath ai_agent/runtime/agent-trace.jsonl `
+  -Destination "ai_agent/runtime/agent-trace-$stamp.jsonl"
+```
+
 Use `profile=thorough` only when the additional latency and hosted-model cost are wanted.
 It pins `claude-opus-5`, allows up to four drafts, and adds a critic; `fast` pins
 `claude-sonnet-5`, allows two drafts, and skips the critic. Stop both servers with Ctrl+C.
@@ -503,7 +559,9 @@ docker run --rm --mount "type=bind,source=$repoRoot,target=/workspace" `
 Expected: `hosted_model_called` is `false`; both profiles return an answer over
 `gold.crypto_dbt.daily_snapshot`; the thorough report includes `critic_passed`; and each
 report identifies `scripted-no-api` while still carrying real Trino work statistics and
-the standard data caveats.
+the standard data caveats. The `trace` report must also contain two request IDs, Trino query
+IDs, and `true` checks for the full question, model prompts, returned rows, and terminal
+answers. Its trace file exists only in a temporary directory and is removed after inspection.
 
 If startup says `ANTHROPIC_API_KEY is required`, confirm the placeholder in `.env` was
 replaced and the loading commands ran in the same terminal. If the response refuses with an

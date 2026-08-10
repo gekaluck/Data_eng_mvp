@@ -14,7 +14,7 @@ from ai_agent.agent_service.contracts import (
 )
 from ai_agent.agent_service.loop import AgentLoop
 from ai_agent.agent_service.mcp_tools import ToolCallError
-from ai_agent.agent_service.provider import ProviderError
+from ai_agent.agent_service.provider import LlmGeneration, LlmUsage, ProviderError
 from ai_agent.mcp_server.metadata_models import (
     ColumnDocs,
     ColumnSchema,
@@ -85,7 +85,12 @@ class FakeProvider:
         if isinstance(value, Exception):
             raise value
         assert isinstance(value, kwargs["output_type"])
-        return value
+        return LlmGeneration(
+            output=value,
+            response_id=f"fake-{kwargs['stage']}",
+            stop_reason="end_turn",
+            usage=LlmUsage(input_tokens=10, output_tokens=5),
+        )
 
 
 class SlowProvider(FakeProvider):
