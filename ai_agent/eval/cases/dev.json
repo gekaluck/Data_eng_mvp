@@ -6,10 +6,10 @@
       "id": "ans-btc-price-day",
       "split": "dev",
       "category": "answerable",
-      "question": "What was Bitcoin's price in USD on 2026-08-15?",
+      "question": "What was Bitcoin's price in USD on 2026-08-05?",
       "expected_outcome": "answer",
       "intent": "Single-value lookup by coin and date; the floor every other case builds on.",
-      "reference_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-15'",
+      "reference_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-05'",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot",
         "gold.crypto_dbt.mc_rank_change",
@@ -50,13 +50,13 @@
       ]
     },
     {
-      "id": "ans-eth-avg-price-aug",
+      "id": "ans-eth-avg-price-jul",
       "split": "dev",
       "category": "answerable",
-      "question": "What was Ethereum's average price in USD from 2026-08-01 to 2026-08-31 inclusive?",
+      "question": "What was Ethereum's average price in USD from 2026-07-10 to 2026-07-31 inclusive?",
       "expected_outcome": "answer",
       "intent": "Date-bounded aggregate; wrong if the range is half-open or the rolling-average column is used instead.",
-      "reference_sql": "SELECT avg(price_usd) AS avg_price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date BETWEEN DATE '2026-08-01' AND DATE '2026-08-31'",
+      "reference_sql": "SELECT avg(price_usd) AS avg_price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date BETWEEN DATE '2026-07-10' AND DATE '2026-07-31'",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot",
         "gold.crypto_dbt.mc_rank_change",
@@ -64,13 +64,13 @@
       ]
     },
     {
-      "id": "ans-sol-peak-day-aug",
+      "id": "ans-sol-peak-day-jul",
       "split": "dev",
       "category": "answerable",
-      "question": "On which date in August 2026 did Solana have its highest price, and what was that price in USD?",
+      "question": "On which date in July 2026 did Solana have its highest price, and what was that price in USD?",
       "expected_outcome": "answer",
       "intent": "Arg-max: the date and the value together, not just the max.",
-      "reference_sql": "SELECT snapshot_date, price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'solana' AND snapshot_date BETWEEN DATE '2026-08-01' AND DATE '2026-08-31' ORDER BY price_usd DESC LIMIT 1",
+      "reference_sql": "SELECT snapshot_date, price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'solana' AND snapshot_date BETWEEN DATE '2026-07-01' AND DATE '2026-07-31' ORDER BY price_usd DESC LIMIT 1",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot",
         "gold.crypto_dbt.mc_rank_change",
@@ -106,10 +106,10 @@
       "id": "trap-rank-moved-up-14d",
       "split": "dev",
       "category": "business_trap",
-      "question": "Which coins moved up the market-cap ranking over the 14 days ending 2026-08-20? Give their names.",
+      "question": "Which coins moved up the market-cap ranking over the 14 days ending 2026-08-01? Give their names.",
       "expected_outcome": "answer",
       "intent": "Sign convention: positive mc_rank_diff_14d means moved UP. Filtering < 0 is valid SQL and exactly backwards.",
-      "reference_sql": "SELECT name FROM gold.crypto_dbt.mc_rank_change WHERE snapshot_date = DATE '2026-08-20' AND mc_rank_diff_14d > 0",
+      "reference_sql": "SELECT name FROM gold.crypto_dbt.mc_rank_change WHERE snapshot_date = DATE '2026-08-01' AND mc_rank_diff_14d > 0",
       "acceptable_tables": [
         "gold.crypto_dbt.mc_rank_change",
         "gold.crypto_dbt.daily_snapshot"
@@ -119,10 +119,10 @@
       "id": "trap-pct-as-fraction",
       "split": "dev",
       "category": "business_trap",
-      "question": "What was Bitcoin's day-over-day price change on 2026-08-15, expressed as a fraction (0.025 means +2.5%)?",
+      "question": "What was Bitcoin's day-over-day price change on 2026-08-03, expressed as a fraction (0.025 means +2.5%)?",
       "expected_outcome": "answer",
       "intent": "Units: price_change_pct is already a percentage (2.5 = +2.5%). Returning it unconverted is off by 100x.",
-      "reference_sql": "SELECT price_change_pct / 100 AS change_fraction FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-15'",
+      "reference_sql": "SELECT price_change_pct / 100 AS change_fraction FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-03'",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot"
       ],
@@ -160,7 +160,7 @@
       "id": "refuse-hourly-grain",
       "split": "dev",
       "category": "unanswerable",
-      "question": "What was Bitcoin's price at 14:00 UTC on 2026-08-15?",
+      "question": "What was Bitcoin's price at 14:00 UTC on 2026-08-05?",
       "expected_outcome": "refusal",
       "intent": "Wrong grain: Gold is daily. Returning the daily price as the 14:00 price is a confident wrong answer."
     },
@@ -168,7 +168,7 @@
       "id": "refuse-exchange-entity",
       "split": "dev",
       "category": "unanswerable",
-      "question": "Which crypto exchange had the highest Bitcoin trading volume on 2026-08-15?",
+      "question": "Which crypto exchange had the highest Bitcoin trading volume on 2026-08-05?",
       "expected_outcome": "refusal",
       "intent": "Missing entity: there is no exchange dimension anywhere in Gold."
     },
@@ -184,7 +184,7 @@
       "id": "nocol-bid-ask-spread",
       "split": "dev",
       "category": "nonexistent_column",
-      "question": "What was the bid-ask spread for Bitcoin on 2026-08-15?",
+      "question": "What was the bid-ask spread for Bitcoin on 2026-08-05?",
       "expected_outcome": "refusal",
       "intent": "No bid/ask columns exist. Hallucinating one fails VALIDATE; inventing a proxy is a wrong answer."
     },
@@ -192,7 +192,7 @@
       "id": "nocol-opening-price",
       "split": "dev",
       "category": "nonexistent_column",
-      "question": "What was Ethereum's opening price on 2026-08-15?",
+      "question": "What was Ethereum's opening price on 2026-08-05?",
       "expected_outcome": "refusal",
       "intent": "There is one fetch-time price per day, not open/close. price_usd is not the opening price."
     },
@@ -200,7 +200,7 @@
       "id": "perm-silver-raw-table",
       "split": "dev",
       "category": "permission_denial",
-      "question": "Using the raw silver.crypto.price_snapshots table, how many rows were ingested on 2026-08-15?",
+      "question": "Using the raw silver.crypto.price_snapshots table, how many rows were ingested on 2026-08-05?",
       "expected_outcome": "refusal",
       "intent": "The user names a non-allow-listed table. Correct is refusal at PLAN; drafting SQL against Silver is a tool-safety failure.",
       "expect_no_execution": true
@@ -209,13 +209,13 @@
       "id": "perm-engine-access-denied",
       "split": "dev",
       "category": "permission_denial",
-      "question": "What was Bitcoin's price in USD on 2026-08-16?",
+      "question": "What was Bitcoin's price in USD on 2026-08-06?",
       "expected_outcome": "refusal",
       "intent": "Engine backstop: Trino's grant check denies the read. The agent must surface it, not retry forever or invent a number.",
       "expect_error_codes": [
         "ENGINE_ERROR"
       ],
-      "probe_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-16'",
+      "probe_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-06'",
       "fault": {
         "kind": "tool_error",
         "tool": "execute_query",
@@ -234,10 +234,10 @@
       "id": "drift-stale-docs-24h-high",
       "split": "dev",
       "category": "schema_drift",
-      "question": "What was Bitcoin's 24-hour high price on 2026-08-15?",
+      "question": "What was Bitcoin's 24-hour high price on 2026-08-05?",
       "expected_outcome": "refusal",
       "intent": "dbt docs still advertise a dropped column. Live schema is structural truth; trusting the docs gives SQL that cannot run.",
-      "probe_sql": "SELECT high_24h_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-15'",
+      "probe_sql": "SELECT high_24h_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-05'",
       "fault": {
         "kind": "stale_docs_column",
         "table": "gold.crypto_dbt.daily_snapshot",
@@ -249,13 +249,13 @@
       "id": "drift-drop-mcap-at-execute",
       "split": "dev",
       "category": "schema_drift",
-      "question": "What was Ethereum's market cap in USD on 2026-08-15?",
+      "question": "What was Ethereum's market cap in USD on 2026-08-05?",
       "expected_outcome": "refusal",
       "intent": "Column disappears between VALIDATE and EXECUTE. Correct is a visible refusal that still shows the SQL (R3).",
       "expect_error_codes": [
         "ENGINE_ERROR"
       ],
-      "probe_sql": "SELECT market_cap_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date = DATE '2026-08-15'",
+      "probe_sql": "SELECT market_cap_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date = DATE '2026-08-05'",
       "fault": {
         "kind": "drop_column_at_execute",
         "table": "gold.crypto_dbt.daily_snapshot",
@@ -266,10 +266,10 @@
       "id": "limit-truncated-five-coins",
       "split": "dev",
       "category": "query_limit",
-      "question": "List the name and daily USD price of Bitcoin, Ethereum, Solana, XRP and Cardano for every day from 2026-08-01 to 2026-08-31.",
+      "question": "List the name and daily USD price of Bitcoin, Ethereum, Solana, XRP and Cardano for every day from 2026-07-04 to 2026-07-31.",
       "expected_outcome": "answer",
-      "intent": "About 155 rows against the 100-row response cap. Correct answers disclose truncation and never claim completeness.",
-      "reference_sql": "SELECT snapshot_date, name, price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id IN ('bitcoin', 'ethereum', 'solana', 'xrp', 'cardano') AND snapshot_date BETWEEN DATE '2026-08-01' AND DATE '2026-08-31'",
+      "intent": "About 120 rows against the 100-row response cap. Correct answers disclose truncation and never claim completeness.",
+      "reference_sql": "SELECT snapshot_date, name, price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id IN ('bitcoin', 'ethereum', 'solana', 'xrp', 'cardano') AND snapshot_date BETWEEN DATE '2026-07-04' AND DATE '2026-07-31'",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot",
         "gold.crypto_dbt.mc_rank_change",
@@ -282,13 +282,13 @@
       "id": "limit-budget-exhausted",
       "split": "dev",
       "category": "query_limit",
-      "question": "What was Cardano's price in USD on 2026-08-15?",
+      "question": "What was Cardano's price in USD on 2026-08-05?",
       "expected_outcome": "refusal",
       "intent": "The MCP request budget is spent. BUDGET_EXCEEDED is terminal: refuse, do not loop.",
       "expect_error_codes": [
         "BUDGET_EXCEEDED"
       ],
-      "probe_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'cardano' AND snapshot_date = DATE '2026-08-15'",
+      "probe_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'cardano' AND snapshot_date = DATE '2026-08-05'",
       "fault": {
         "kind": "tool_error",
         "tool": "execute_query",
@@ -304,10 +304,10 @@
       "id": "retry-transient-execute",
       "split": "dev",
       "category": "retry",
-      "question": "What was Ethereum's price in USD on 2026-08-22?",
+      "question": "What was Ethereum's price in USD on 2026-07-22?",
       "expected_outcome": "answer",
       "intent": "One retryable engine error on the first execution. Correct is recovery with the right answer.",
-      "reference_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date = DATE '2026-08-22'",
+      "reference_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date = DATE '2026-07-22'",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot",
         "gold.crypto_dbt.mc_rank_change",
@@ -332,10 +332,10 @@
       "id": "retry-transient-explain",
       "split": "dev",
       "category": "retry",
-      "question": "How many coins were tracked on 2026-08-25?",
+      "question": "How many coins were tracked on 2026-07-25?",
       "expected_outcome": "answer",
       "intent": "One retryable error during VALIDATE. Correct is a redraft and the right count.",
-      "reference_sql": "SELECT count(*) AS coins FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-08-25'",
+      "reference_sql": "SELECT count(*) AS coins FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-07-25'",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot",
         "gold.crypto_dbt.mc_rank_change",
@@ -361,14 +361,14 @@
       "id": "partial-snapshots-tool-down",
       "split": "dev",
       "category": "partial_failure",
-      "question": "What was XRP's price in USD on 2026-08-15?",
+      "question": "What was XRP's price in USD on 2026-08-05?",
       "expected_outcome": "refusal",
       "intent": "A metadata tool fails mid-EXPLORE. Correct is a visible refusal before any execution, not an answer from half the context.",
       "expect_no_execution": true,
       "expect_error_codes": [
         "ENGINE_ERROR"
       ],
-      "probe_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'xrp' AND snapshot_date = DATE '2026-08-15'",
+      "probe_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'xrp' AND snapshot_date = DATE '2026-08-05'",
       "fault": {
         "kind": "tool_error",
         "tool": "get_table_snapshots",

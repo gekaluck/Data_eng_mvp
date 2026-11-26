@@ -137,3 +137,31 @@ def test_fault_gateway_passes_through_without_a_fault():
             return session
 
     assert asyncio.run(go()) is tools
+
+
+def test_all_zero_reference_is_skipped_unless_the_case_allows_it():
+    zero_sql = f"SELECT count(*) AS n FROM {TABLE} WHERE snapshot_date = DATE '2099-01-01'"
+    tools = CannedTools({zero_sql: executed(("n",), ((0,),))})
+    strict = _case("zero", question="Count far future?", reference_sql=zero_sql, acceptable_tables=(TABLE,))
+    allowed = _case("zero-ok", question="Count of none?", reference_sql=zero_sql, acceptable_tables=(TABLE,), allow_degenerate_reference=True)
+
+    from ai_agent.eval.runner import reference_results
+
+    references, failures = asyncio.run(reference_results(CannedGateway(tools), (strict, allowed), run_id="r"))
+    assert [f.case_id for f in failures] == ["zero"]
+    assert set(references) == {"zero-ok"}
+
+
+# Local Gold coverage when the set was written (I22). A case dated outside it measures
+# the pipeline's lag, not the agent. Move the upper bound only after Gold has caught up.
+LOCAL_GOLD_COVERAGE = ("2026-01-14", "2026-08-10")
+
+
+def test_case_dates_stay_inside_local_gold_coverage():
+    import re
+
+    first, last = LOCAL_GOLD_COVERAGE
+    for case in load_golden_set().cases:
+        text = " ".join(filter(None, (case.question, case.reference_sql, case.probe_sql)))
+        for found in re.findall(r"\d{4}-\d{2}-\d{2}", text):
+            assert first <= found <= last, (case.id, found)

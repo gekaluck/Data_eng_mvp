@@ -111,6 +111,9 @@ class GoldenCase(EvalModel):
     # Row-cap cases: when the agent's result is truncated, score it as correct if every
     # returned row is a reference row (the reference itself must fit under 500 rows).
     allow_truncated_subset: bool = False
+    # A one-row reference that is all 0/NULL usually means the dates fell outside the
+    # data (COUNT and AVG never return zero rows). Set this only when 0 is the real answer.
+    allow_degenerate_reference: bool = False
     # Case-sensitive substrings the answer text must contain (advisory check).
     answer_must_mention: tuple[str, ...] = ()
 

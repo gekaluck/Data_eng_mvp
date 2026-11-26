@@ -34,6 +34,7 @@ from ai_agent.eval.grading import (
     ReferenceResult,
     TrialResult,
     grade_trial,
+    normalize_value,
 )
 from ai_agent.mcp_server.allow_list import DEFAULT_ALLOW_LIST_PATH
 from ai_agent.mcp_server.budget import BudgetProfile
@@ -146,10 +147,25 @@ async def reference_results(
             if result.truncated:
                 failures.append(PreflightFailure(case_id=case.id, reason="reference hit the row cap"))
                 continue
+            if _degenerate(result.rows) and not case.allow_degenerate_reference:
+                failures.append(
+                    PreflightFailure(
+                        case_id=case.id,
+                        reason="reference is one all-zero/NULL row (dates outside coverage?)",
+                    )
+                )
+                continue
             references[case.id] = ReferenceResult(
                 columns=result.columns, rows=result.rows, truncated=result.truncated
             )
     return references, failures
+
+
+def _degenerate(rows: tuple[tuple[Any, ...], ...]) -> bool:
+    """One row of only zeros/NULLs: what COUNT/AVG return over dates with no data."""
+    if len(rows) != 1:
+        return False
+    return all(normalize_value(value) in (None, 0.0) for value in rows[0])
 
 
 async def run_cases(

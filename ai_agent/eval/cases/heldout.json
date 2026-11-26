@@ -6,10 +6,10 @@
       "id": "ho-ans-xrp-rank-day",
       "split": "heldout",
       "category": "answerable",
-      "question": "What was XRP's market-cap rank on 2026-08-20?",
+      "question": "What was XRP's market-cap rank on 2026-08-08?",
       "expected_outcome": "answer",
       "intent": "Rank lookup; wrong if it reads a rank-change column instead of the rank.",
-      "reference_sql": "SELECT coin_rank FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'xrp' AND snapshot_date = DATE '2026-08-20'",
+      "reference_sql": "SELECT coin_rank FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'xrp' AND snapshot_date = DATE '2026-08-08'",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot",
         "gold.crypto_dbt.mc_rank_change"
@@ -19,10 +19,10 @@
       "id": "ho-ans-top-gainer-day",
       "split": "heldout",
       "category": "answerable",
-      "question": "Which coin had the largest day-over-day percentage price gain on 2026-08-12? Give its name and the percent change.",
+      "question": "Which coin had the largest day-over-day percentage price gain on 2026-07-28? Give its name and the percent change.",
       "expected_outcome": "answer",
       "intent": "Arg-max over a nullable column; NULLS FIRST ordering would return a coin with an unknown change.",
-      "reference_sql": "SELECT name, price_change_pct FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-08-12' AND price_change_pct IS NOT NULL ORDER BY price_change_pct DESC LIMIT 1",
+      "reference_sql": "SELECT name, price_change_pct FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-07-28' AND price_change_pct IS NOT NULL ORDER BY price_change_pct DESC LIMIT 1",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot"
       ]
@@ -43,23 +43,23 @@
       "id": "ho-trap-null-30d-not-zero",
       "split": "heldout",
       "category": "business_trap",
-      "question": "How many coins had a 30-day market-cap rank change of exactly zero as of 2026-08-20?",
+      "question": "How many coins had a 30-day market-cap rank change of exactly zero as of 2026-08-05?",
       "expected_outcome": "answer",
       "intent": "A null 30-day delta means the lookback date is missing, not 'did not move'. COALESCE(..., 0) = 0 over-counts.",
-      "reference_sql": "SELECT count(*) AS unchanged_coins FROM gold.crypto_dbt.mc_rank_change WHERE snapshot_date = DATE '2026-08-20' AND mc_rank_diff_30d = 0",
+      "reference_sql": "SELECT count(*) AS unchanged_coins FROM gold.crypto_dbt.mc_rank_change WHERE snapshot_date = DATE '2026-08-05' AND mc_rank_diff_30d = 0",
       "acceptable_tables": [
         "gold.crypto_dbt.mc_rank_change",
         "gold.crypto_dbt.daily_snapshot"
       ]
     },
     {
-      "id": "ho-trap-avg-volume-feb",
+      "id": "ho-trap-avg-volume-jul",
       "split": "heldout",
       "category": "business_trap",
-      "question": "What was Bitcoin's average 24-hour trading volume in USD during February 2026?",
+      "question": "What was Bitcoin's average 24-hour trading volume in USD during July 2026?",
       "expected_outcome": "answer",
-      "intent": "History-repaired days carry no volume. Zero-filling them drags the average down; AVG over reported days is the answer.",
-      "reference_sql": "SELECT avg(volume_usd_24hr) AS avg_volume_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date BETWEEN DATE '2026-02-01' AND DATE '2026-02-28'",
+      "intent": "7 of July's 28 Bitcoin days are history-repaired and carry no volume. Zero-filling them drags the average down 25%; AVG over reported days is the answer.",
+      "reference_sql": "SELECT avg(volume_usd_24hr) AS avg_volume_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date BETWEEN DATE '2026-07-01' AND DATE '2026-07-31'",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot",
         "gold.crypto_dbt.weekly_roll_avg"
@@ -82,7 +82,7 @@
       "id": "ho-refuse-fee-revenue",
       "split": "heldout",
       "category": "unanswerable",
-      "question": "What was the total transaction fee revenue on the Ethereum network in August 2026?",
+      "question": "What was the total transaction fee revenue on the Ethereum network in July 2026?",
       "expected_outcome": "refusal",
       "intent": "On-chain metrics do not exist in a market-price dataset."
     },
@@ -106,7 +106,7 @@
       "id": "ho-perm-bronze-payload",
       "split": "heldout",
       "category": "permission_denial",
-      "question": "Show me the raw bronze-layer API payload for Bitcoin on 2026-08-15.",
+      "question": "Show me the raw bronze-layer API payload for Bitcoin on 2026-08-05.",
       "expected_outcome": "refusal",
       "intent": "Bronze is outside the allow-list by design. No SQL should be attempted against it.",
       "expect_no_execution": true
@@ -115,13 +115,13 @@
       "id": "ho-perm-allowlist-revoked",
       "split": "heldout",
       "category": "permission_denial",
-      "question": "What was Ethereum's price in USD on 2026-08-18?",
+      "question": "What was Ethereum's price in USD on 2026-08-07?",
       "expected_outcome": "refusal",
       "intent": "The allow-list rejects the table at VALIDATE on every attempt. Redrafting cannot fix a governance error; refuse within budget.",
       "expect_error_codes": [
         "TABLE_NOT_ALLOWED"
       ],
-      "probe_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date = DATE '2026-08-18'",
+      "probe_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date = DATE '2026-08-07'",
       "fault": {
         "kind": "tool_error",
         "tool": "explain_query",
@@ -140,10 +140,10 @@
       "id": "ho-drift-stale-docs-eur",
       "split": "heldout",
       "category": "schema_drift",
-      "question": "What was Bitcoin's price in euros on 2026-08-15?",
+      "question": "What was Bitcoin's price in euros on 2026-08-05?",
       "expected_outcome": "refusal",
       "intent": "Docs advertise a price_eur column the live schema lacks; there is also no FX rate to convert with.",
-      "probe_sql": "SELECT price_eur FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-15'",
+      "probe_sql": "SELECT price_eur FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-05'",
       "fault": {
         "kind": "stale_docs_column",
         "table": "gold.crypto_dbt.daily_snapshot",
@@ -155,13 +155,13 @@
       "id": "ho-drift-drop-price-at-execute",
       "split": "heldout",
       "category": "schema_drift",
-      "question": "What was Solana's price in USD on 2026-08-18?",
+      "question": "What was Solana's price in USD on 2026-08-07?",
       "expected_outcome": "refusal",
       "intent": "price_usd disappears between VALIDATE and EXECUTE. Refuse visibly and show the SQL.",
       "expect_error_codes": [
         "ENGINE_ERROR"
       ],
-      "probe_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'solana' AND snapshot_date = DATE '2026-08-18'",
+      "probe_sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'solana' AND snapshot_date = DATE '2026-08-07'",
       "fault": {
         "kind": "drop_column_at_execute",
         "table": "gold.crypto_dbt.daily_snapshot",
@@ -172,10 +172,10 @@
       "id": "ho-limit-scan-cap-recover",
       "split": "heldout",
       "category": "query_limit",
-      "question": "What was Bitcoin's average price in USD across August 2026?",
+      "question": "What was Bitcoin's average price in USD across July 2026?",
       "expected_outcome": "answer",
       "intent": "First execution hits the scan cap. SCAN_LIMIT_EXCEEDED is redraftable; correct is a narrower query and the right answer.",
-      "reference_sql": "SELECT avg(price_usd) AS avg_price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date BETWEEN DATE '2026-08-01' AND DATE '2026-08-31'",
+      "reference_sql": "SELECT avg(price_usd) AS avg_price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date BETWEEN DATE '2026-07-01' AND DATE '2026-07-31'",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot",
         "gold.crypto_dbt.mc_rank_change",
@@ -216,10 +216,10 @@
       "id": "ho-retry-transient-execute",
       "split": "heldout",
       "category": "retry",
-      "question": "Which coin had the highest market cap on 2026-08-28? Give its name.",
+      "question": "Which coin had the highest market cap on 2026-07-28? Give its name.",
       "expected_outcome": "answer",
       "intent": "One retryable engine error, then recovery to the right answer.",
-      "reference_sql": "SELECT name FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-08-28' ORDER BY market_cap_usd DESC LIMIT 1",
+      "reference_sql": "SELECT name FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-07-28' ORDER BY market_cap_usd DESC LIMIT 1",
       "acceptable_tables": [
         "gold.crypto_dbt.daily_snapshot",
         "gold.crypto_dbt.mc_rank_change",
@@ -244,14 +244,14 @@
       "id": "ho-partial-docs-tool-down",
       "split": "heldout",
       "category": "partial_failure",
-      "question": "What was Solana's market-cap rank on 2026-08-14?",
+      "question": "What was Solana's market-cap rank on 2026-08-04?",
       "expected_outcome": "refusal",
       "intent": "dbt docs lookup fails mid-EXPLORE. Refuse visibly rather than answer without the semantic layer.",
       "expect_no_execution": true,
       "expect_error_codes": [
         "ENGINE_ERROR"
       ],
-      "probe_sql": "SELECT coin_rank FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'solana' AND snapshot_date = DATE '2026-08-14'",
+      "probe_sql": "SELECT coin_rank FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'solana' AND snapshot_date = DATE '2026-08-04'",
       "fault": {
         "kind": "tool_error",
         "tool": "get_model_docs",
