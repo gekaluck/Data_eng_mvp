@@ -93,7 +93,7 @@ def git_state() -> tuple[str, bool]:
         ).stdout.strip()
         dirty = bool(
             subprocess.run(
-                ["git", "status", "--porcelain", "--", "ai_agent"],
+                ["git", "status", "--porcelain", "--", "ai_agent", ":!ai_agent/eval/reports"],
                 capture_output=True,
                 text=True,
                 check=True,
