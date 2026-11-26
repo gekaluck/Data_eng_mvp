@@ -40,6 +40,7 @@ def summarize(trials: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "trials": len(trials),
         "inconclusive": len(trials) - len(conclusive),
+        "infrastructure_errors": sum(bool(t.get("infrastructure_error")) for t in trials),
         "pass_rate": _rate(sum(t["verdict"] == "pass" for t in conclusive), len(conclusive)),
         "execution_accuracy": _rate(
             sum(t["scores"]["business_answer"]["score"] == "pass" for t in answerable), len(answerable)
@@ -112,7 +113,7 @@ def render_run(run: dict[str, Any]) -> str:
 
     groups = [name for name in summary if name != "all"] + ["all"]
     lines += ["## Metrics", "", "| Metric | " + " | ".join(groups) + " |", "|---" * (len(groups) + 1) + "|"]
-    for metric in ("trials", "inconclusive", "pass_rate", "execution_accuracy", "over_refusal_rate",
+    for metric in ("trials", "inconclusive", "infrastructure_errors", "pass_rate", "execution_accuracy", "over_refusal_rate",
                    "refusal_catch_rate", "mean_elapsed_ms", "mean_tool_calls", "mean_input_tokens",
                    "mean_output_tokens", "total_input_tokens", "total_output_tokens"):
         lines.append(f"| {metric} | " + " | ".join(_fmt(summary[g][metric], pct=metric not in _NUMERIC_METRICS) for g in groups) + " |")
@@ -136,7 +137,8 @@ def render_run(run: dict[str, Any]) -> str:
     for trial in bad:
         failed = [f"**{name}**: {detail['reason']}" for name, detail in trial["scores"].items() if detail["score"] == "fail"]
         lines.append(f"- `{trial['case_id']}` t{trial['trial']} ({trial['split']}, {trial['category']}) — "
-                     f"{trial['verdict']}; " + ("; ".join(failed) or "injected fault never reached"))
+                     f"{trial['verdict']}; " + (f"infrastructure error: {trial['infrastructure_error']}" if trial.get("infrastructure_error")
+                        else "; ".join(failed) or "injected fault never reached"))
     lines.append("")
     return "\n".join(lines)
 

@@ -242,3 +242,16 @@ def test_refusal_that_hides_drafted_sql_fails_environment():
     entries = [_entry(1, "llm.completed", status="succeeded", stage="draft")]
     hidden = grade_trial(case, trial=1, response=_response(answer=None, refusal="gone", sql=None), entries=entries, fault_log=FaultLog(), reference=None)
     assert hidden.scores["environment_outcome"].score == "fail"
+
+
+def test_infrastructure_refusal_is_inconclusive_not_a_correct_refusal():
+    # I23: a 401 from the provider looked like a perfect refusal on every refusal case.
+    case = _case(category="unanswerable", expected_outcome="refusal", reference_sql=None, acceptable_tables=())
+    for reason in (
+        "Claude plan request failed: Error code: 401 - invalid x-api-key",
+        "Agent infrastructure failed: unhandled errors in a TaskGroup (1 sub-exception)",
+    ):
+        response = _response(answer=None, refusal=reason, sql=None, tables=())
+        result = grade_trial(case, trial=1, response=response, entries=[], fault_log=FaultLog(), reference=None)
+        assert result.verdict == "inconclusive"
+        assert result.infrastructure_error == reason

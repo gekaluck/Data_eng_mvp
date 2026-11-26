@@ -33,7 +33,10 @@ from ai_agent.agent_service.tracing import AgentTraceEntry
 from ai_agent.eval.cases import GoldenCase
 from ai_agent.eval.faults import FaultLog
 
-GRADER_VERSION = "grader-v1"
+GRADER_VERSION = "grader-v2"
+# Refusals that come from the plumbing, not from a decision. A trial that ends this way
+# measured nothing about the agent: it is inconclusive, never a "correct refusal" (I23).
+_INFRASTRUCTURE_REFUSALS = ("Agent infrastructure failed", " request failed: ")
 Score = Literal["pass", "fail", "n/a"]
 Verdict = Literal["pass", "fail", "inconclusive"]
 SCORE_NAMES = (
@@ -89,6 +92,7 @@ class TrialResult(BaseModel):
     tool_calls: int
     tool_errors: tuple[str, ...]
     injected_faults: tuple[dict[str, Any], ...]
+    infrastructure_error: str | None = None
     input_tokens: int
     output_tokens: int
     elapsed_ms: int
@@ -447,6 +451,18 @@ def _environment(
     return _detail("pass", f"ended in {outcome} as expected")
 
 
+def _infrastructure_error(
+    response: AgentResponse, entries: Sequence[AgentTraceEntry]
+) -> str | None:
+    reason = response.refusal_reason or ""
+    if any(marker in reason for marker in _INFRASTRUCTURE_REFUSALS):
+        return reason
+    for entry in entries:
+        if entry.event == "mcp.session.ready" and entry.status == "failed":
+            return "MCP session could not be opened"
+    return None
+
+
 def grade_trial(
     case: GoldenCase,
     *,
@@ -472,8 +488,11 @@ def grade_trial(
             f"missing {missing}" if missing else "all required mentions present",
         )
 
-    if case.fault is not None and not fault_log.triggered:
+    infrastructure_error = _infrastructure_error(response, entries)
+    if infrastructure_error is not None:
         verdict: Verdict = "inconclusive"
+    elif case.fault is not None and not fault_log.triggered:
+        verdict = "inconclusive"
     elif all(detail.score != "fail" for detail in scores.values()):
         verdict = "pass"
     else:
@@ -497,6 +516,7 @@ def grade_trial(
         tool_calls=len(facts.tool_calls),
         tool_errors=facts.tool_errors,
         injected_faults=tuple(fault_log.injected),
+        infrastructure_error=infrastructure_error,
         input_tokens=facts.input_tokens,
         output_tokens=facts.output_tokens,
         elapsed_ms=facts.elapsed_ms,
