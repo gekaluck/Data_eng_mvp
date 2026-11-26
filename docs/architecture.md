@@ -164,6 +164,16 @@ migrated from local Airflow to the cloud.
   the declared result columns exactly, execution only over planned tables, expected row
   presence, and truncation disclosure; any exhausted budget, deadline, provider failure,
   MCP failure, or failed confidence check becomes a refusal with best-effort SQL shown
+- The agent writes an ordered local request trace to the gitignored
+  `ai_agent/runtime/agent-trace.jsonl` by default (D043). In `full` mode it records the
+  question, rendered prompts, structured model decisions and token usage, MCP arguments
+  and results, SQL, returned rows, retries, checks, Trino query IDs, and terminal answer.
+  `basic` retains event metadata without content; `off` disables the sink
+- Full traces are debugging/eval evidence for the current single trusted human, not a
+  compliance store. Credentials, process environment, and HTTP/MCP transport headers are
+  never trace inputs, but user questions and returned Gold values can still be sensitive.
+  Trace writes fail open so an observability-disk problem cannot turn a governed answer
+  into a refusal; the separate MCP query audit remains fail-closed at the data boundary
 
 ### Serving Layer - Apache Superset
 - Runs as an optional Docker Compose profile for end-user exploration

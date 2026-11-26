@@ -17,3 +17,12 @@ Trino statistics, caveats, passed checks, profile, request ID, model ID, and pro
 See [`../../docs/runbook.md`](../../docs/runbook.md) for startup and manual checks, and
 [`../../docs/ai-agent-architecture.md`](../../docs/ai-agent-architecture.md) §5 for the
 authoritative design.
+
+Production requests also emit ordered JSONL events to
+`ai_agent/runtime/agent-trace.jsonl`. The default `full` level captures complete local
+debug/eval evidence, including prompts, structured decisions, token usage, MCP inputs and
+outputs, SQL, returned rows, checks, retries, query IDs, and the terminal envelope. Use
+`AI_TRACE_LEVEL=basic` to omit event content or `off` to disable tracing. This file is
+gitignored but can contain questions and Gold values; it is not a credential or header log
+and should remain local. Trace write failures are logged and fail open, while the MCP
+query audit remains a separate fail-closed enforcement record.

@@ -3,8 +3,8 @@
 > **Status: runnable governed MCP query layer and owned agent loop.** Five catalog tools, budgeted scan-free
 > `explain_query`, capped/audited `sample_rows`, and row/scan/time-bounded `execute_query`
 > are exposed over MCP stdio and loopback streamable HTTP. A separate loopback FastAPI
-> service turns one natural-language question into an answer or visible refusal. The eval
-> harness is next.
+> service turns one natural-language question into an answer or visible refusal. It also
+> writes a complete ordered local trace by default. The eval harness is next.
 
 ## Purpose
 
@@ -91,6 +91,11 @@ endpoint at `http://127.0.0.1:8000/mcp`. `fast` pins `claude-sonnet-5` with low 
 30-second loop deadline; `thorough` pins `claude-opus-5` with high effort, a critic pass,
 and a 120-second deadline. Neither service may be bound remotely under the current trusted-
 local-user threat model. Exact environment loading and request commands are in the runbook.
+Its default `full` trace is `ai_agent/runtime/agent-trace.jsonl` (gitignored) and includes
+questions, prompts, model decisions/token counts, tool inputs/results, SQL, returned rows,
+checks, retries, query IDs, and terminal answers. Set `AI_TRACE_LEVEL=basic` for event
+metadata without content or `off` to disable it. Full traces may contain sensitive user or
+Gold data even though credentials and transport headers are never recorded; keep them local.
 
 ## Building here
 

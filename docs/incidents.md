@@ -515,6 +515,29 @@ healthy, one day at a time.
 
 ---
 
+## I21 — Quiet trace settings also hid trace-write failures
+**Date**: 2026-08-10 · **Status**: fixed before release
+
+**Symptom**: The new fail-open trace test proved that an agent answer still succeeded when
+the JSONL sink raised `OSError`, but the expected `Agent trace write failed` diagnostic was
+missing. This happened after another test constructed a trace sink with console logging set
+to `CRITICAL`.
+
+**Root cause**: Normal event envelopes and emergency sink-failure diagnostics used the same
+named logger. `JsonlAgentTrace` configures that shared logger to the requested
+`AI_LOG_LEVEL`; a quiet sink therefore suppressed the `ERROR` emitted when any later trace
+write failed. The data path correctly failed open, but its evidence path could fail silently.
+
+**Fix**: Sink-write failures now use the tracing module's independent diagnostic logger,
+which is not governed by the routine event-envelope verbosity. The regression test asserts
+both properties together: the terminal answer survives and the write failure is visible.
+
+**Lesson**: A fail-open observability component needs a failure signal outside the component
+whose configuration or storage just failed. Log-level controls for routine telemetry must
+not be able to silence the only indication that telemetry is being lost.
+
+---
+
 ## Hardening items
 
 None open. H1–H6 have all landed.

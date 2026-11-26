@@ -12,6 +12,7 @@ from ai_agent.agent_service.contracts import AgentRequest, AgentResponse
 from ai_agent.agent_service.loop import AgentLoop
 from ai_agent.agent_service.mcp_tools import McpHttpGateway
 from ai_agent.agent_service.provider import AnthropicStructuredLlm
+from ai_agent.agent_service.tracing import JsonlAgentTrace
 
 DEFAULT_AGENT_HOST = "127.0.0.1"
 DEFAULT_AGENT_PORT = 8010
@@ -32,7 +33,7 @@ class AgentHttpSettings:
                 "requires authentication and a revised threat model."
             )
         if not isinstance(self.port, int) or isinstance(self.port, bool):
-            raise ValueError("AI agent HTTP port must be an integer.")
+            raise TypeError("AI agent HTTP port must be an integer.")
         if not 1 <= self.port <= 65_535:
             raise ValueError("AI agent HTTP port must be between 1 and 65535.")
 
@@ -50,6 +51,7 @@ def build_agent_loop() -> AgentLoop:
     return AgentLoop(
         AnthropicStructuredLlm.from_env(),
         McpHttpGateway.from_env(),
+        trace_sink=JsonlAgentTrace.from_env(),
     )
 
 

@@ -69,13 +69,15 @@ All four gaps below are now closed by D035:
    empty entry point.
 8. ~~**Put the guardrail tests in CI.**~~ **Complete.** The isolated Python 3.12 job installs
    only the AI requirements and runs Ruff, `compileall`, and `pytest ai_agent/tests`. The
-   current 181 cases cover the allow-list, statement type (including read-only set
+   current 190 cases cover the allow-list, statement type (including read-only set
    operations refused without being mislabelled as writes), CTE resolution, table scope,
    time travel, structured errors, dbt docs/lineage, live-metadata query shapes, schema
    drift, bounded shared/concurrent budgets, capped sampling/execution, cancellation,
    audit records, MCP contracts, structured hosted-model decisions, state transitions,
    retries, confidence checks, terminal envelopes, and the FastAPI boundary without
-   contacting Trino or a hosted model.
+   contacting Trino or a hosted model. They also cover full/basic/off request tracing,
+   ordered timing, prompts, token usage, tool rows/query IDs, terminal answers, and
+   fail-open trace-write errors.
 9. ~~**Pin the model IDs, and say where the key lives.**~~ **Complete (D042).** `fast` pins
    `claude-sonnet-5`; `thorough` pins `claude-opus-5`. Every terminal envelope records the
    selected model and `agent-loop-v1` prompt version. `ANTHROPIC_API_KEY` has only a
@@ -85,6 +87,12 @@ All four gaps below are now closed by D035:
     (D041).** Every `execute_query` result carries conservative sparse-coverage and
     by-design-null caveats alongside exact truncation and Trino statistics;
     `get_table_snapshots` supplies the table-specific freshness evidence.
+11. ~~**Make complete loop behavior inspectable without a new monitoring service.**~~
+    **Complete (D043).** The agent writes ordered, request-correlated JSONL traces locally.
+    Full content is the trusted-local default; metadata-only and disabled modes are
+    available. Privacy remains an explicit boundary because full traces contain questions,
+    prompts, Gold rows, and answers even though credentials and transport headers are never
+    recorded.
 
 ---
 
@@ -96,7 +104,8 @@ budgeted scan-free `explain_query`, capped/audited `sample_rows`, and governed
 `execute_query` with row/scan/time caps, cancellation, Trino stats, audit, and data caveats
 are implemented (D036–D041). The owned one-shot agent loop, pinned Claude 5 provider,
 deterministic confidence gate, thorough-mode critic, terminal envelope, and loopback FastAPI
-service are implemented in D042.** The remaining Phase A slice is the golden-set eval
+service are implemented in D042, and D043 adds full local request tracing as the evidence
+source for debugging and future eval efficiency.** The remaining Phase A slice is the golden-set eval
 harness; C6's Iceberg snapshot pin belongs there.
 
 The ordering below is retained as the original plan and completion trail.

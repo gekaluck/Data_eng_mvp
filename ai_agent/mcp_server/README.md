@@ -41,6 +41,7 @@ Implemented now:
 - append-only execution auditing with SQL, verdict, result shape, truncation, query ID,
   work stats, and failure code—but never returned business-row values
 
-Not implemented yet: the owned natural-language agent loop, eval harness, or remote
+The owned natural-language agent loop is implemented as a separate process and consumes
+this server only through streamable HTTP. Not implemented yet: the eval harness or remote
 authenticated HTTP exposure. Contracts and the full guardrail spec remain in
 [`../../docs/ai-agent-architecture.md`](../../docs/ai-agent-architecture.md) §3–§4.

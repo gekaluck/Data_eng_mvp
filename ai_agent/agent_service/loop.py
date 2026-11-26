@@ -2,13 +2,14 @@
 
 import asyncio
 import sys
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from time import monotonic
-from typing import Any, AsyncIterator
+from typing import Any
 from uuid import uuid4
 
 from ai_agent.agent_service.contracts import (
+    PROMPT_VERSION,
     AgentRequest,
     AgentResponse,
     AnswerDecision,
@@ -22,9 +23,16 @@ from ai_agent.agent_service.mcp_tools import (
     AgentTools,
     ToolCallError,
     ToolGateway,
+    TracingAgentTools,
 )
 from ai_agent.agent_service.prompts import SYSTEM_PROMPT, prompt
 from ai_agent.agent_service.provider import ProviderError, StructuredLlm
+from ai_agent.agent_service.tracing import (
+    AgentTrace,
+    NullTraceSink,
+    TraceSink,
+    elapsed_ms,
+)
 from ai_agent.mcp_server.budget import BudgetProfile
 from ai_agent.mcp_server.query_executor import ExecutedQuery
 
@@ -47,16 +55,54 @@ class AgentLoop:
         provider: StructuredLlm,
         gateway: ToolGateway,
         *,
+        trace_sink: TraceSink | None = None,
         timer: Callable[[], float] = monotonic,
     ) -> None:
         self._provider = provider
         self._gateway = gateway
+        self._trace_sink = trace_sink or NullTraceSink()
         self._timer = timer
 
     async def answer(self, request: AgentRequest) -> AgentResponse:
         """Run one cold question to ANSWER or REFUSE within its profile deadline."""
         request_id = request.request_id or f"agent-{uuid4()}"
         deadline = self._timer() + _PROFILE_TIMEOUTS[request.profile]
+        trace = AgentTrace(
+            self._trace_sink,
+            request_id=request_id,
+            profile=request.profile,
+            model_id=self._provider.model_id(request.profile),
+            prompt_version=PROMPT_VERSION,
+            timer=self._timer,
+        )
+        trace.event(
+            "request.started",
+            status="started",
+            stage="request",
+            metadata={"question_chars": len(request.question)},
+            content={"request": request},
+        )
+        response = await self._run(request, request_id, deadline, trace)
+        trace.event(
+            "request.completed",
+            status="succeeded" if response.answer is not None else "failed",
+            stage="request",
+            metadata={
+                "outcome": "answer" if response.answer is not None else "refusal",
+                "confidence_checks": len(response.confidence),
+                "tables_used": len(response.tables_used),
+            },
+            content={"response": response},
+        )
+        return response
+
+    async def _run(
+        self,
+        request: AgentRequest,
+        request_id: str,
+        deadline: float,
+        trace: AgentTrace,
+    ) -> AgentResponse:
         confidence: list[str] = []
         caveats: list[str] = []
         last_sql: str | None = None
@@ -64,12 +110,15 @@ class AgentLoop:
         result: ExecutedQuery | None = None
 
         try:
-            async with self._session_within(deadline) as tools:
+            async with self._session_within(deadline, trace) as raw_tools:
+                tools = TracingAgentTools(raw_tools, trace)
                 catalog = await self._within(deadline, tools.list_tables())
                 plan = await self._llm(
                     deadline,
+                    trace=trace,
                     profile=request.profile,
                     stage="plan",
+                    attempt=None,
                     payload={
                         "question": request.question,
                         "catalog": CatalogContext(
@@ -79,6 +128,13 @@ class AgentLoop:
                         ).model_dump(mode="json"),
                     },
                     output_type=PlanDecision,
+                )
+                trace.event(
+                    "state.completed",
+                    status="succeeded",
+                    stage="plan",
+                    metadata={"disposition": plan.disposition},
+                    content={"decision": plan},
                 )
                 allowed = {table.table.casefold(): table.table for table in catalog}
                 plan_error = self._plan_error(plan, allowed, request.profile)
@@ -109,6 +165,13 @@ class AgentLoop:
                     profile=request.profile,
                     deadline=deadline,
                 )
+                trace.event(
+                    "state.completed",
+                    status="succeeded",
+                    stage="explore",
+                    metadata={"table_count": len(selected)},
+                    content={"exploration": exploration},
+                )
                 confidence.append("live_schema_loaded")
                 base_confidence = tuple(confidence)
 
@@ -123,8 +186,10 @@ class AgentLoop:
                     result = None
                     draft = await self._llm(
                         deadline,
+                        trace=trace,
                         profile=request.profile,
                         stage="draft",
+                        attempt=attempt,
                         payload={
                             "question": request.question,
                             "selected_tables": selected,
@@ -139,6 +204,14 @@ class AgentLoop:
                     draft_error = self._draft_error(draft)
                     if draft_error:
                         feedback = draft_error
+                        trace.event(
+                            "retry.feedback",
+                            status="failed",
+                            stage="draft",
+                            attempt=attempt,
+                            metadata={"will_retry": not is_critic_refinement},
+                            content={"feedback": feedback, "draft": draft},
+                        )
                         if is_critic_refinement:
                             break
                         continue
@@ -164,6 +237,14 @@ class AgentLoop:
                                 confidence=confidence,
                             )
                         feedback = self._tool_feedback("VALIDATE", exc)
+                        trace.event(
+                            "retry.feedback",
+                            status="failed",
+                            stage="validate",
+                            attempt=attempt,
+                            metadata={"will_retry": True, "error_code": exc.code},
+                            content={"feedback": feedback, "error": exc},
+                        )
                         continue
                     if not explained.valid:
                         diagnostic = explained.diagnostic
@@ -171,6 +252,17 @@ class AgentLoop:
                             f"{diagnostic.code}: {diagnostic.message}"
                             if diagnostic
                             else "Trino rejected the query semantics."
+                        )
+                        trace.event(
+                            "retry.feedback",
+                            status="failed",
+                            stage="validate",
+                            attempt=attempt,
+                            metadata={
+                                "will_retry": not is_critic_refinement
+                                and attempt < attempts
+                            },
+                            content={"feedback": feedback, "explanation": explained},
                         )
                         if is_critic_refinement or attempt == attempts:
                             break
@@ -198,6 +290,14 @@ class AgentLoop:
                                 confidence=confidence,
                             )
                         feedback = self._tool_feedback("EXECUTE", exc)
+                        trace.event(
+                            "retry.feedback",
+                            status="failed",
+                            stage="execute",
+                            attempt=attempt,
+                            metadata={"will_retry": True, "error_code": exc.code},
+                            content={"feedback": feedback, "error": exc},
+                        )
                         continue
 
                     tables_used = result.tables
@@ -208,6 +308,26 @@ class AgentLoop:
                     )
                     confidence.extend(
                         check for check in passed if check not in confidence
+                    )
+                    trace.event(
+                        "check.completed",
+                        status="failed" if check_error else "succeeded",
+                        stage="check",
+                        attempt=attempt,
+                        metadata={
+                            "passed_checks": len(passed),
+                            "will_retry": bool(
+                                check_error
+                                and not is_critic_refinement
+                                and attempt < attempts
+                            ),
+                        },
+                        content={
+                            "draft": draft,
+                            "result": result,
+                            "passed": passed,
+                            "error": check_error,
+                        },
                     )
                     if check_error:
                         feedback = check_error
@@ -225,8 +345,10 @@ class AgentLoop:
                     if request.profile == "thorough":
                         critic = await self._llm(
                             deadline,
+                            trace=trace,
                             profile=request.profile,
                             stage="critic",
+                            attempt=attempt,
                             payload=self._result_payload(
                                 request.question,
                                 last_sql,
@@ -237,6 +359,17 @@ class AgentLoop:
                         )
                         if critic.verdict == "fail":
                             feedback = f"CRITIC failed: {critic.reason}"
+                            trace.event(
+                                "retry.feedback",
+                                status="failed",
+                                stage="critic",
+                                attempt=attempt,
+                                metadata={
+                                    "will_retry": not is_critic_refinement
+                                    and attempt < attempts
+                                },
+                                content={"feedback": feedback, "critic": critic},
+                            )
                             if is_critic_refinement or attempt == attempts:
                                 break
                             critic_refinement_used = True
@@ -245,8 +378,10 @@ class AgentLoop:
 
                     answered = await self._llm(
                         deadline,
+                        trace=trace,
                         profile=request.profile,
                         stage="answer",
+                        attempt=attempt,
                         payload=self._result_payload(
                             request.question,
                             last_sql,
@@ -321,7 +456,7 @@ class AgentLoop:
                 caveats=caveats,
                 confidence=confidence,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - terminal infrastructure boundary
             return self._refusal(
                 request,
                 request_id,
@@ -377,21 +512,76 @@ class AgentLoop:
         self,
         deadline: float,
         *,
+        trace: AgentTrace,
         profile: BudgetProfile,
         stage: str,
+        attempt: int | None,
         payload: dict[str, Any],
         output_type: type[Any],
     ) -> Any:
-        return await self._within(
-            deadline,
-            self._provider.generate(
-                profile=profile,
-                stage=stage,
-                system=SYSTEM_PROMPT,
-                prompt=prompt(stage, payload),
-                output_type=output_type,
-            ),
+        rendered_prompt = prompt(stage, payload)
+        started = trace.now()
+        trace.event(
+            "llm.started",
+            status="started",
+            stage=stage,
+            attempt=attempt,
+            metadata={
+                "model_id": self._provider.model_id(profile),
+                "output_type": output_type.__name__,
+                "prompt_chars": len(rendered_prompt),
+            },
+            content={
+                "system": SYSTEM_PROMPT,
+                "prompt": rendered_prompt,
+                "input": payload,
+                "output_schema": output_type.model_json_schema(),
+            },
         )
+        try:
+            generation = await self._within(
+                deadline,
+                self._provider.generate(
+                    profile=profile,
+                    stage=stage,
+                    system=SYSTEM_PROMPT,
+                    prompt=rendered_prompt,
+                    output_type=output_type,
+                ),
+            )
+        except Exception as exc:
+            trace.event(
+                "llm.completed",
+                status="failed",
+                stage=stage,
+                attempt=attempt,
+                duration_ms=elapsed_ms(started, trace.now),
+                metadata={"error_type": type(exc).__name__},
+                content={"error": exc},
+            )
+            raise
+        usage = generation.usage
+        trace.event(
+            "llm.completed",
+            status="succeeded",
+            stage=stage,
+            attempt=attempt,
+            duration_ms=elapsed_ms(started, trace.now),
+            metadata={
+                "response_id": generation.response_id,
+                "stop_reason": generation.stop_reason,
+                "input_tokens": usage.input_tokens if usage else None,
+                "output_tokens": usage.output_tokens if usage else None,
+                "cache_creation_input_tokens": (
+                    usage.cache_creation_input_tokens if usage else None
+                ),
+                "cache_read_input_tokens": (
+                    usage.cache_read_input_tokens if usage else None
+                ),
+            },
+            content={"output": generation.output},
+        )
+        return generation.output
 
     async def _within(self, deadline: float, operation: Any) -> Any:
         remaining = deadline - self._timer()
@@ -406,22 +596,86 @@ class AgentLoop:
             raise LoopDeadlineExceeded from exc
 
     @asynccontextmanager
-    async def _session_within(self, deadline: float) -> AsyncIterator[AgentTools]:
+    async def _session_within(
+        self,
+        deadline: float,
+        trace: AgentTrace,
+    ) -> AsyncIterator[AgentTools]:
         """Apply the remaining profile deadline to MCP setup, use, and teardown."""
         manager = self._gateway.session()
-        tools = await self._within(deadline, manager.__aenter__())
+        started = trace.now()
+        trace.event(
+            "mcp.session.started",
+            status="started",
+            stage="mcp",
+        )
+        try:
+            tools = await self._within(deadline, manager.__aenter__())
+        except BaseException as exc:
+            trace.event(
+                "mcp.session.ready",
+                status="failed",
+                stage="mcp",
+                duration_ms=elapsed_ms(started, trace.now),
+                metadata={"error_type": type(exc).__name__},
+                content={"error": exc},
+            )
+            raise
+        trace.event(
+            "mcp.session.ready",
+            status="succeeded",
+            stage="mcp",
+            duration_ms=elapsed_ms(started, trace.now),
+        )
         try:
             yield tools
         except BaseException:
             exc_type, exc, traceback = sys.exc_info()
-            suppressed = await self._within(
-                deadline,
-                manager.__aexit__(exc_type, exc, traceback),
+            teardown_started = trace.now()
+            try:
+                suppressed = await self._within(
+                    deadline,
+                    manager.__aexit__(exc_type, exc, traceback),
+                )
+            except BaseException as teardown_exc:
+                trace.event(
+                    "mcp.session.closed",
+                    status="failed",
+                    stage="mcp",
+                    duration_ms=elapsed_ms(teardown_started, trace.now),
+                    metadata={"error_type": type(teardown_exc).__name__},
+                    content={"error": teardown_exc},
+                )
+                raise
+            trace.event(
+                "mcp.session.closed",
+                status="succeeded",
+                stage="mcp",
+                duration_ms=elapsed_ms(teardown_started, trace.now),
+                metadata={"suppressed_error": bool(suppressed)},
             )
             if not suppressed:
                 raise
         else:
-            await self._within(deadline, manager.__aexit__(None, None, None))
+            teardown_started = trace.now()
+            try:
+                await self._within(deadline, manager.__aexit__(None, None, None))
+            except BaseException as exc:
+                trace.event(
+                    "mcp.session.closed",
+                    status="failed",
+                    stage="mcp",
+                    duration_ms=elapsed_ms(teardown_started, trace.now),
+                    metadata={"error_type": type(exc).__name__},
+                    content={"error": exc},
+                )
+                raise
+            trace.event(
+                "mcp.session.closed",
+                status="succeeded",
+                stage="mcp",
+                duration_ms=elapsed_ms(teardown_started, trace.now),
+            )
 
     @staticmethod
     def _plan_error(
@@ -477,8 +731,10 @@ class AgentLoop:
         expected_columns = tuple(column.casefold() for column in draft.expected_columns)
         if expected_columns != actual_columns:
             return (
-                "CHECK failed: result columns do not exactly match the declared "
-                "expected columns.",
+                (
+                    "CHECK failed: result columns do not exactly match the declared "
+                    "expected columns."
+                ),
                 tuple(passed),
             )
         passed.append("result_shape_matches_draft")
@@ -492,8 +748,10 @@ class AgentLoop:
         passed.append("execution_matches_planned_tables")
         if draft.expects_rows and not result.rows:
             return (
-                "CHECK failed: the question implied data should exist but execution "
-                "returned no rows.",
+                (
+                    "CHECK failed: the question implied data should exist but execution "
+                    "returned no rows."
+                ),
                 tuple(passed),
             )
         passed.append("result_nonempty" if result.rows else "empty_result_allowed")
@@ -504,9 +762,7 @@ class AgentLoop:
     def _can_redraft(exc: ToolCallError, attempt: int, maximum: int) -> bool:
         if attempt >= maximum or exc.code == "BUDGET_EXCEEDED":
             return False
-        if exc.code == "ENGINE_ERROR" and not exc.retryable:
-            return False
-        return True
+        return exc.code != "ENGINE_ERROR" or exc.retryable
 
     @staticmethod
     def _tool_feedback(state: str, exc: ToolCallError) -> str:

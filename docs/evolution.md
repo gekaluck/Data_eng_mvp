@@ -351,3 +351,21 @@ against the real MCP server and Trino without spending hosted-model or CoinCap q
 loop exists; the next honest question is empirical—how often it produces the right result,
 and how often refusing is the right call. That belongs to the golden-set eval, not another
 round of prompt confidence.
+
+D043 made the loop inspectable before attempting that eval. A terminal answer and the
+query audit could show what SQL ran, but not why PLAN chose a table, what schema and rows the
+model saw, whether a retry corrected anything, how many tokens each decision consumed, or
+how the last answer was worded from the evidence. The agent now writes those steps as one
+ordered, request-correlated local JSONL trace and exposes full, metadata-only, and disabled
+levels. The no-cost scripted smoke reconstructed 54 events across fast and thorough runs,
+including prompts, returned rows, Trino query IDs, and terminal answers.
+
+That completeness has a cost even without a vendor bill: full traces contain questions,
+prompts, Gold values, and answers. For this one-human, loopback-only learning project the
+debugging value wins, so full local tracing is the default and privacy is an accepted
+consideration rather than a blocker. The boundary is written down instead of hand-waved:
+credentials and transport headers are never trace inputs, the file is gitignored and not a
+safe sharing artifact, and any remote, multi-user, personal-data, or central-storage future
+must revisit retention, access, consent, and redaction. The enforcement audit still omits
+rows and fails closed; the debugging trace fails open. Those are different records because
+they serve different promises.
