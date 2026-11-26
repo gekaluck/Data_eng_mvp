@@ -185,9 +185,11 @@ def load_golden_set(directory: str | Path = DEFAULT_CASES_DIR) -> GoldenSet:
     files: list[GoldenSetFile] = []
     digest = hashlib.sha256()
     for split in SPLITS:
-        raw = (directory / f"{split}.json").read_bytes()
-        digest.update(split.encode() + b"\0" + raw + b"\0")
-        files.append(GoldenSetFile.model_validate(json.loads(raw)))
+        parsed = json.loads((directory / f"{split}.json").read_text(encoding="utf-8"))
+        # Hash canonical JSON, not bytes: a CRLF checkout must not change the pin.
+        canonical = json.dumps(parsed, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        digest.update(f"{split}\0{canonical}\0".encode())
+        files.append(GoldenSetFile.model_validate(parsed))
 
     versions = {file.version for file in files}
     if len(versions) != 1:
