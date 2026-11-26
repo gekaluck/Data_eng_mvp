@@ -533,3 +533,26 @@ def test_missing_request_id_is_generated_once_and_reused_by_tools():
     )
     assert explained[1]["request_id"] == result.request_id
     assert executed_call[1]["request_id"] == result.request_id
+
+
+class TaskGroupGateway:
+    """Mimics the MCP HTTP client: the session body runs inside a task group."""
+
+    def __init__(self, tools):
+        self.tools = tools
+
+    @asynccontextmanager
+    async def session(self):
+        async with asyncio.TaskGroup() as group:
+            group.create_task(asyncio.sleep(0))
+            yield self.tools
+
+
+def test_provider_error_inside_task_group_session_keeps_its_reason():
+    provider = FakeProvider(plan=[ProviderError("Claude plan request failed: 401 invalid x-api-key")])
+    response = asyncio.run(
+        AgentLoop(provider, TaskGroupGateway(FakeTools())).answer(
+            AgentRequest(question="What was Bitcoin's price?", profile="fast")
+        )
+    )
+    assert response.refusal_reason == "Claude plan request failed: 401 invalid x-api-key"

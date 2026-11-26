@@ -646,6 +646,13 @@ class AgentLoop:
                     metadata={"error_type": type(teardown_exc).__name__},
                     content={"error": teardown_exc},
                 )
+                # The MCP HTTP client runs inside a task group, which re-raises the
+                # loop's own exception wrapped in an ExceptionGroup. Unwrap it so the
+                # terminal handlers still see ProviderError/ToolCallError and the
+                # refusal names the real cause instead of "unhandled errors in a
+                # TaskGroup" (I23).
+                if _sole_leaf(teardown_exc) is exc:
+                    raise exc from None
                 raise
             trace.event(
                 "mcp.session.closed",
@@ -823,3 +830,12 @@ class AgentLoop:
             request_id=request_id,
             model_id=self._provider.model_id(request.profile),
         )
+
+
+def _sole_leaf(error: BaseException) -> BaseException:
+    """Descend single-member exception groups to the one exception they carry."""
+    # Duck-typed rather than isinstance(BaseExceptionGroup): ruff's configured target
+    # predates the builtin, and only exception groups carry a tuple of `.exceptions`.
+    while isinstance(children := getattr(error, "exceptions", None), tuple) and len(children) == 1:
+        error = children[0]
+    return error
