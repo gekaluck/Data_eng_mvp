@@ -588,6 +588,40 @@ when a new one crosses that bound (D041). Two consequences matter to the eval ha
 For a single interactive question none of this applies: pick one ID, keep the profile fixed,
 and let the process own it.
 
+### Run the golden-set eval, or an eval result looks wrong
+
+The harness (`python -m ai_agent.eval`, D044) starts its own MCP server on a free port, so
+only Trino has to be up. Always run the oracle first — it costs nothing and proves the
+cases, references, faults and graders against today's data:
+
+```powershell
+.venv\Scripts\python.exe -m ai_agent.eval check
+.venv\Scripts\python.exe -m ai_agent.eval run --provider oracle --name oracle-check
+```
+
+Then the paid run, with the key loaded exactly as for the agent service above:
+
+```powershell
+.venv\Scripts\python.exe -m ai_agent.eval run --provider claude --profile fast --split dev --name baseline-dev-fast
+```
+
+Reports land in `ai_agent/eval/reports/<name>.md` and `.json`. When a number looks wrong:
+
+- **Oracle below 100%.** A case is broken, not the agent. Read the "Preflight skips" and
+  failing trials. An empty or all-zero reference almost always means the dates fall outside
+  local Gold coverage (I22); `test_case_dates_stay_inside_local_gold_coverage` holds the range.
+- **Many inconclusive trials with an `infrastructure error`.** The run measured plumbing.
+  `Claude … request failed: … 401` means `ANTHROPIC_API_KEY` is invalid; an MCP session
+  failure means Trino or the MCP process. Fix and rerun; never quote those numbers (I23).
+- **Inconclusive with "injected fault never reached".** The agent refused or answered
+  before the planted call, for example refusing at PLAN. Expected occasionally; if a case is
+  always inconclusive its fault is planted in the wrong place.
+- **Two runs disagree but "not directly comparable".** `compare` found different Iceberg
+  snapshots, golden set, grader or allow-list. Rerun both on the same data before reading
+  the delta.
+- **`business_answer` fails but the answer looks right.** Check the README's grader
+  limitations first (identifier choice, display rounding) before changing the agent.
+
 ### History backfill succeeded but expected dates are missing
 
 Check:

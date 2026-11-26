@@ -1682,3 +1682,65 @@ loopback; questions or Gold models begin carrying personal, customer, regulated,
 data; traces leave the workstation; retention/rotation becomes operationally material; a
 compliance requirement appears; or the eval/monitoring workload justifies OpenTelemetry,
 central storage, access controls, encryption, sampling, and field-level redaction.
+
+## D044 — The Eval Harness Runs the Loop In-Process, Plants Faults Client-Side, and Scores Five Things Separately
+**Date**: 2026-11-26
+**Status**: accepted (amends architecture §6 "Mechanics")
+
+**Decision**: `ai_agent.eval` builds `AgentLoop` in-process from the production provider and
+`McpHttpGateway`, and calls `answer()`, the method the `POST /v1/questions` route calls. It
+does not go over HTTP. Each trial gets:
+
+- an **in-memory `full` trace sink**, because `AgentResponse` carries no rows. The executed
+  result the grader compares against ground truth exists only in the trace.
+- an optional **planted fault** on the *client* side of the MCP boundary
+  (`FaultInjectingGateway`): a structured tool error on chosen calls, dbt docs advertising a
+  column the live schema lacks, or a column that vanishes between VALIDATE and EXECUTE. The
+  MCP server and its guardrails are untouched, and every injection is logged so the grader
+  can tell a planted error from one the agent caused.
+- a unique `request_id` and a **fresh MCP server process** per run, so budgets start cold
+  (runbook, D041).
+
+Ground truth is each case's `reference_sql`, re-executed through the same governed
+`execute_query` at the start of every run. It is not a frozen expected result. The run pins
+the current Iceberg snapshot ID of every allow-listed table, alongside model ID, prompt
+version, allow-list hash, golden-set version and content hash, grader version and git commit.
+Reports refuse to call two runs comparable when the snapshots, golden set, grader or
+allow-list differ.
+
+Every trial gets five scores — retrieval, query validity, business answer, tool safety,
+environment outcome — each pass/fail/n/a, plus a trial verdict that is *inconclusive* when a
+planted fault was never reached. The golden set is split into `dev.json` (may inform
+changes) and `heldout.json` (scored only). A no-API **oracle provider** replays each
+case's reference SQL (or, for fault-driven refusal cases, a `probe_sql`) and must score
+100% against the live stack before any paid run means anything.
+
+**Why**:
+
+- Faults like a transient engine error, schema drift mid-request, or a metadata tool dying
+  cannot be produced on demand by a healthy local stack. Planting them client-side keeps the
+  real model, loop and Trino in play while making the failure deterministic.
+- Separate scores say *which layer* failed. "Valid SQL, wrong business answer" is the
+  headline risk (F1) and is invisible to any score that blends validity with correctness.
+- Re-running references keeps ground truth correct after a legitimate dbt rebuild; snapshot
+  pins keep that from silently comparing runs over different data.
+- The oracle turned the first live run into a harness test: it found 22 cases dated past
+  local Gold coverage and a trap case whose month had no data to trap (I22), at zero API cost.
+
+**Alternatives considered**:
+
+- **Drive `POST /v1/questions` over HTTP** (the original §6 wording): rejected for now. The
+  HTTP envelope has no rows and no fault seam; recovering both would mean parsing the
+  service's trace file and adding a test-only fault switch to a production process.
+- **Frozen expected results in the case files**: rejected. They go stale on every dbt
+  rebuild, and a stale expectation is a grader false negative that looks like an agent
+  regression.
+- **Fault injection inside the MCP server**: rejected. It would put test-only branches next
+  to the enforcement code the eval is meant to measure.
+- **LLM-as-judge for business correctness**: still rejected as the metric of record (D8).
+  Answer prose is graded only by an explicit, advisory `answer_must_mention` list.
+
+**Revisit if**: the HTTP service gains behaviour the in-process loop lacks (auth,
+middleware, streaming), so the eval would stop measuring what users hit; dbt rebuilds start
+changing historical values often enough that re-executed references hide real regressions;
+or the case count outgrows hand-written references.

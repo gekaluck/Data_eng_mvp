@@ -369,3 +369,21 @@ safe sharing artifact, and any remote, multi-user, personal-data, or central-sto
 must revisit retention, access, consent, and redaction. The enforcement audit still omits
 rows and fails closed; the debugging trace fails open. Those are different records because
 they serve different promises.
+
+The eval started with a correction to my own records. The task tracker had "guardrails +
+eval harness" marked done since August; the repository had a placeholder README. So D044
+built the harness and the extension together: 43 cases split into a dev set I may learn
+from and a held-out set I may only score, planted faults for the failures a healthy laptop
+stack never produces on demand, and five scores per trial instead of one accuracy number,
+because "valid SQL, wrong answer" is invisible to any score that blends the two.
+
+Before paying for a single model call, an oracle provider replayed each case's own
+reference SQL through the real loop. It should have been a formality, and it was not: a
+third of the cases asked about August days that local Gold has never seen, and a volume trap
+pointed at a month with no volume to trap (I22). The empty-result check had caught the
+lookups; the aggregates sailed through, because `COUNT` over nothing is still a row. Then
+the first paid run produced the most flattering number in the project — a 100% refusal
+catch rate — from an invalid API key. The loop had buried the 401 under "unhandled errors in
+a TaskGroup", and the grader had counted seven crashes as seven wise refusals (I23). Both
+are fixed, and the lesson is the same one the confidence gate is built on, pointed back at
+the evaluator: a refusal only means something if a decision produced it.

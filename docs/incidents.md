@@ -538,6 +538,62 @@ not be able to silence the only indication that telemetry is being lost.
 
 ---
 
+## I22 — A third of the first golden set asked about days local Gold does not have
+**Date**: 2026-11-26 · **Status**: fixed before release
+
+**Symptom**: The first oracle run (no API, reference SQL replayed through the agent loop)
+skipped 7 of 23 answer cases because their reference returned no rows, and failed a
+row-cap case that returned 50 rows where about 155 were expected. Every case that did pass
+looked fine, including `ho-trap-null-30d-not-zero`, whose reference was `count(*) = 0`.
+
+**Root cause**: 22 cases were written with August dates after 2026-08-10. Cloud capture
+has kept running, but local Gold stops at 2026-08-10, the last time the laptop's transforms
+ran. The empty-result preflight caught lookups. It could not catch aggregates: `COUNT`
+over a missing date returns one row with `0`, and `AVG` over a half-present month returns a
+real-looking number. A second, independent case bug surfaced the same way: Bitcoin has no
+24-hour volume on any February 2026 day (all history-repaired, D024), so the "zero-filled
+volume" trap returned NULL and had nothing to trap.
+
+**Fix**: All case dates moved inside 2026-01-14 → 2026-08-10, with August-wide ranges moved
+to July. The preflight now also rejects a one-row, all-zero/NULL reference unless the case
+sets `allow_degenerate_reference`. A test pins every case date inside local coverage. The
+volume trap moved to July, where 7 of 28 Bitcoin days lack volume. The next oracle run:
+43/43 conclusive, 43/43 pass.
+
+**Lesson**: An "is the result empty?" guard does not work for aggregates, which always
+return a row. Ground truth needs a no-cost dry run against the real data before it is
+allowed to score anything; the oracle found all of this before a single paid model call.
+
+---
+
+## I23 — An invalid API key scored as a perfect refusal rate
+**Date**: 2026-11-26 · **Status**: fixed before release (the key itself is still invalid)
+
+**Symptom**: The first paid dev run reported a 37% pass rate, a **100% refusal catch rate**,
+0% execution accuracy, and zero tokens. Every trial's refusal reason was `Agent
+infrastructure failed: unhandled errors in a TaskGroup (1 sub-exception)`.
+
+**Root cause**: Two layers each hid the real error, a 401 `invalid x-api-key` from the
+Messages API. (1) The loop raises `ProviderError` inside the MCP HTTP client's session,
+whose task group re-raises it wrapped in an `ExceptionGroup`. The loop's `except
+ProviderError` never matched; the catch-all produced the TaskGroup message. (2) The grader
+treated any refusal on a refusal case as correct, so seven crashed trials counted as the
+agent correctly declining unanswerable questions.
+
+**Fix**: `_session_within` unwraps a single-leaf exception group that carries the loop's own
+exception and re-raises the original, so the refusal now reads `Claude plan request
+failed: … 401 …`. A regression test runs the loop against a gateway that, like the MCP client,
+yields inside a task group. Grader v2 marks trials whose refusal came from infrastructure
+(`Agent infrastructure failed`, `… request failed: …`, or an MCP session that never opened)
+as **inconclusive**, with the cause in the report.
+
+**Lesson**: A refusal is only evidence of judgement if a decision produced it. Any metric
+that rewards refusing will also reward crashing unless the grader can tell the two apart.
+And an exception-translating `except` chain stops working the moment an async context
+manager wraps what passes through it.
+
+---
+
 ## Hardening items
 
 None open. H1–H6 have all landed.

@@ -75,7 +75,9 @@ legitimately change a value; the snapshot pins say whether two runs saw the same
 | `environment_outcome` | Terminal outcome, expected retry, expected error codes, truncation disclosed, no execution where none is allowed, SQL shown on refusal | — |
 
 A trial **passes** when no score fails. It is **inconclusive** when the case plants a fault
-the agent never reached (for example it refused before the faulted call); inconclusive
+the agent never reached (for example it refused before the faulted call), or when the run
+ended in an infrastructure error (provider request failure, MCP session failure, the loop's
+catch-all) rather than a decision. A crash is not a correct refusal (I23). Inconclusive
 trials are excluded from rates and counted separately.
 
 **Result equivalence** ignores column names, allows extra agent columns, ignores row order
