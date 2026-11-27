@@ -208,20 +208,22 @@ list) to the downstream jobs instead of `start_date`/`end_date`.
 
 ### Every layer is exactly one day behind, and nothing failed
 
-The orchestrator ran *before* that day's capture landed, so it found nothing and skipped;
-the next day's run picks the snapshot up. Compare the capture workflow's completion time
-with the orchestrator's schedule (05:30 UTC, D034):
+This was the symptom of a fixed orchestrator slot that GitHub's drift outran (I14, I20,
+I30). Since D047 the orchestrator polls hourly at `:15`, so a capture is processed within
+an hour of landing however late it ran. A day-behind lag now means the polls themselves
+aren't happening or aren't seeing the file. Check, in order:
 
-```bash
-gh run list --workflow=daily-capture.yml --limit 5
-```
+- Is the orchestrator running every hour? The grid should show a run per hour, mostly
+  `skipped`. Hourly runs that are all `queued` mean one long run is holding
+  `max_active_runs=1`, so look at that run instead.
+- Did today's capture actually run and upload? `gh run list --workflow=daily-capture.yml --limit 5`.
+  Its log ends with `Uploaded ... day=DD`.
+- The orchestrator's `sync_captured_snapshots` log after the capture's completion time. It
+  should list today's date. A skip *after* the upload means the sync is reading a
+  different bucket or prefix than the capture writes.
 
-GitHub's scheduled runs are late, never early, and the drift grows over time — it reached
-~3.5h in July 2026 and swallowed the one-hour buffer that used to be enough (I20). If
-completion times are creeping toward 05:30 UTC, move the orchestrator later and update D034;
-`test_orchestrator_runs_well_after_the_capture_cron` enforces a four-hour minimum gap. A
-single catch-up run needs no arguments — the sync copies whatever Bronze lacks and hands the
-range downstream.
+A single catch-up run needs no arguments. The sync copies whatever Bronze lacks and hands
+exactly those dates downstream.
 
 ### The orchestrator fails on `check_downstream_dags_ready`
 

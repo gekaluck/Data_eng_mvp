@@ -71,6 +71,12 @@ Everything from Bronze down runs over **exactly the dates the sync landed**, not
 passes the list itself, not its first and last dates, so a day the capture never produced
 stays a gap and doesn't become a partition Silver waits for (D046, I29).
 
+The orchestrator runs **hourly** (`15 * * * *`), not once a day at an offset from the capture
+cron. GitHub's scheduled runs drift later without bound, and three fixed offsets were outrun
+in turn (I14, I20, I30). The sync skips cheaply when Bronze is current, so the hour after the
+file lands is the one that processes it. Most runs are a bucket listing and a skip, and
+`max_active_runs=1` queues the next poll behind a long catch-up (D047).
+
 Before triggering anything, the orchestrator checks that every downstream DAG is
 registered and unpaused, and each trigger task carries an `execution_timeout`. Triggering
 a paused DAG otherwise produces a run stuck in `queued` that is waited on forever — the
