@@ -350,6 +350,50 @@ def test_plan_sees_live_columns_and_explore_reuses_the_schema():
     assert len(schema_reads) == len(set(schema_reads))
 
 
+BROKEN = "gold.crypto_dbt.weekly_roll_avg"
+
+
+class OneBrokenSchemaTools(FakeTools):
+    """A two-table catalog where one table's metadata cannot be read."""
+
+    async def list_tables(self):
+        healthy = await super().list_tables()
+        return healthy + (TableSummary(table=BROKEN, description="Rolling averages."),)
+
+    async def get_table_schema(self, table):
+        if table == BROKEN:
+            self.calls.append(("get_table_schema", table))
+            raise ToolCallError("ENGINE_ERROR", "metadata unavailable", retryable=True)
+        return await super().get_table_schema(table)
+
+
+def test_one_unavailable_schema_does_not_block_questions_about_other_tables():
+    provider = FakeProvider(
+        plan=[plan()],
+        draft=[draft()],
+        answer=[AnswerDecision(answer="BTC is available.", caveats=())],
+    )
+    tools = OneBrokenSchemaTools()
+
+    result = run(AgentLoop(provider, FakeGateway(tools)))
+
+    assert result.answer == "BTC is available."
+    plan_prompt = provider.calls[0]["prompt"]
+    assert '"live_columns": null' in plan_prompt
+    assert "temporarily unavailable" in plan_prompt
+
+
+def test_unavailable_schema_of_a_selected_table_refuses_after_one_retry():
+    provider = FakeProvider(plan=[plan(tables=(BROKEN,))])
+    tools = OneBrokenSchemaTools()
+
+    result = run(AgentLoop(provider, FakeGateway(tools)))
+
+    assert result.answer is None
+    assert "metadata unavailable" in result.refusal_reason
+    assert [value for name, value in tools.calls if name == "get_table_schema"].count(BROKEN) == 2
+
+
 def test_unknown_or_excessive_plan_is_refused_deterministically():
     unknown = FakeProvider(plan=[plan(tables=("gold.crypto_dbt.unknown",))])
     unknown_result = run(AgentLoop(unknown, FakeGateway(FakeTools())))

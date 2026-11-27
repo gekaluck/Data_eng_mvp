@@ -118,12 +118,7 @@ class AgentLoop:
                 # from description prose: a summary that names "price and rank" made it
                 # refuse market-cap questions on a table that has market_cap_usd (I24).
                 # Schema reads are metadata calls and do not charge the query budget.
-                schemas = {
-                    table.table.casefold(): await self._within(
-                        deadline, tools.get_table_schema(table.table)
-                    )
-                    for table in catalog
-                }
+                schemas = await self._catalog_schemas(tools, catalog, deadline)
                 plan = await self._llm(
                     deadline,
                     trace=trace,
@@ -136,12 +131,7 @@ class AgentLoop:
                             tables=tuple(
                                 {
                                     **table.model_dump(mode="json"),
-                                    "live_columns": [
-                                        column.name
-                                        for column in schemas[
-                                            table.table.casefold()
-                                        ].columns
-                                    ],
+                                    **_live_columns(schemas[table.table.casefold()]),
                                 }
                                 for table in catalog
                             )
@@ -489,13 +479,35 @@ class AgentLoop:
                 confidence=confidence,
             )
 
+    async def _catalog_schemas(
+        self,
+        tools: AgentTools,
+        catalog: Any,
+        deadline: float,
+    ) -> dict[str, TableSchema | None]:
+        """Live schema per catalog table, or None where the read failed.
+
+        One table with unavailable metadata must not block questions about the others,
+        so a failed read is recorded (the tool error stays in the trace) and PLAN
+        decides with what is left.
+        """
+        schemas: dict[str, TableSchema | None] = {}
+        for table in catalog:
+            try:
+                schemas[table.table.casefold()] = await self._within(
+                    deadline, tools.get_table_schema(table.table)
+                )
+            except ToolCallError:
+                schemas[table.table.casefold()] = None
+        return schemas
+
     async def _explore(
         self,
         tools: AgentTools,
         tables: tuple[str, ...],
         *,
         sample_tables: set[str],
-        schemas: dict[str, TableSchema],
+        schemas: dict[str, TableSchema | None],
         request_id: str,
         profile: BudgetProfile,
         deadline: float,
@@ -503,8 +515,12 @@ class AgentLoop:
         explored: list[dict[str, Any]] = []
         for table in tables:
             docs = await self._within(deadline, tools.get_model_docs(table))
-            # Already read for PLAN; reuse it so EXPLORE sees the same schema.
-            schema = schemas[table.casefold()]
+            # Already read for PLAN; reuse it so EXPLORE sees the same schema. A table
+            # whose read failed then gets one more try, and now a failure is fatal,
+            # because the question depends on this table.
+            schema = schemas.get(table.casefold()) or await self._within(
+                deadline, tools.get_table_schema(table)
+            )
             snapshots = await self._within(
                 deadline, tools.get_table_snapshots(table, limit=2)
             )
@@ -853,6 +869,19 @@ class AgentLoop:
             request_id=request_id,
             model_id=self._provider.model_id(request.profile),
         )
+
+
+def _live_columns(schema: TableSchema | None) -> dict[str, Any]:
+    """PLAN's view of one table's columns. The unavailable case explains itself in the
+    data rather than the prompt, so the healthy-path prompt stays unchanged."""
+    if schema is None:
+        return {
+            "live_columns": None,
+            "live_columns_status": (
+                "temporarily unavailable; not evidence that the table lacks columns"
+            ),
+        }
+    return {"live_columns": [column.name for column in schema.columns]}
 
 
 def _sole_leaf(error: BaseException) -> BaseException:
