@@ -388,3 +388,47 @@ safe sharing artifact, and any remote, multi-user, personal-data, or central-sto
 must revisit retention, access, consent, and redaction. The enforcement audit still omits
 rows and fails closed; the debugging trace fails open. Those are different records because
 they serve different promises.
+
+The eval started with a correction to my own records. The task tracker had "guardrails +
+eval harness" marked done since August; the repository had a placeholder README. So D044
+built the harness and the extension together: 43 cases split into a dev set I may learn
+from and a held-out set I may only score, planted faults for the failures a healthy laptop
+stack never produces on demand, and five scores per trial instead of one accuracy number,
+because "valid SQL, wrong answer" is invisible to any score that blends the two.
+
+Before paying for a single model call, an oracle provider replayed each case's own
+reference SQL through the real loop. It should have been a formality, and it was not: a
+third of the cases asked about August days that local Gold has never seen, and a volume trap
+pointed at a month with no volume to trap (I22). The empty-result check had caught the
+lookups; the aggregates sailed through, because `COUNT` over nothing is still a row. Then
+the first paid run produced the most flattering number in the project — a 100% refusal
+catch rate — from an invalid API key. The loop had buried the 401 under "unhandled errors in
+a TaskGroup", and the grader had counted seven crashes as seven wise refusals (I23). Both
+are fixed, and the lesson is the same one the confidence gate is built on, pointed back at
+the evaluator: a refusal only means something if a decision produced it.
+
+With a working key, the first honest numbers came in: 92% on dev, 84% on held-out, and
+every over-refusal decided at PLAN after one catalog call. PLAN had been asked to refuse
+"unsupported facts" while seeing only prose, so a description that listed "price, rank and
+change" became a schema without a market-cap column (I24). Giving PLAN the live column names
+was the obvious fix, and the first version of it was wrong in a way the average almost hid:
+both splits improved, while one top-5 question went from three passes out of three to zero,
+because PLAN had simply moved its suspicion from columns to dates it could not see. Only the
+per-case table and three repeats on each version showed that. The second version says what
+PLAN is for — structure, not data — and both splits came back clean (D045). Two things I
+chose not to fix are written down instead: on the fast profile a single engine retry does
+not fit three budget tokens, and the planted fault flatters that case because it costs
+nothing (I25); and the stale-docs cases stopped testing anything once PLAN could see the
+truth. The last held-out trials ran the account out of credit, which turned into the best
+test of I23's fix the project could have asked for: four trials were scored inconclusive,
+not as refusals, and the comparison now says "partial run" above the table instead of
+letting a 100% stand on its own.
+
+Review then found four places where the harness was still more trusting than it claimed
+to be. The grader I had just taught to tell a crash from a decision only recognized one kind
+of crash by its wording (I26). The PLAN fix had made every table's metadata a dependency of
+every question (I27). Pins recorded where a run started but not whether it stayed there, and
+`compare` checked that two runs used the same golden set without checking they scored the
+same cases (I28). None of them had bitten a run yet, which is exactly when they are cheapest
+to fix. The common thread is the one I keep relearning: check the record of what actually
+happened, not the label that says what should have.

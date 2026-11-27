@@ -1683,6 +1683,110 @@ data; traces leave the workstation; retention/rotation becomes operationally mat
 compliance requirement appears; or the eval/monitoring workload justifies OpenTelemetry,
 central storage, access controls, encryption, sampling, and field-level redaction.
 
+## D044 — The Eval Harness Runs the Loop In-Process, Plants Faults Client-Side, and Scores Five Things Separately
+**Date**: 2026-11-26
+**Status**: accepted (amends architecture §6 "Mechanics")
+
+**Decision**: `ai_agent.eval` builds `AgentLoop` in-process from the production provider and
+`McpHttpGateway`, and calls `answer()`, the method the `POST /v1/questions` route calls. It
+does not go over HTTP. Each trial gets:
+
+- an **in-memory `full` trace sink**, because `AgentResponse` carries no rows. The executed
+  result the grader compares against ground truth exists only in the trace.
+- an optional **planted fault** on the *client* side of the MCP boundary
+  (`FaultInjectingGateway`): a structured tool error on chosen calls, dbt docs advertising a
+  column the live schema lacks, or a column that vanishes between VALIDATE and EXECUTE. The
+  MCP server and its guardrails are untouched, and every injection is logged so the grader
+  can tell a planted error from one the agent caused.
+- a unique `request_id` and a **fresh MCP server process** per run, so budgets start cold
+  (runbook, D041).
+
+Ground truth is each case's `reference_sql`, re-executed through the same governed
+`execute_query` at the start of every run. It is not a frozen expected result. The run pins
+the current Iceberg snapshot ID of every allow-listed table, alongside model ID, prompt
+version, allow-list hash, golden-set version and content hash, grader version and git commit.
+Reports refuse to call two runs comparable when the snapshots, golden set, grader or
+allow-list differ.
+
+Every trial gets five scores — retrieval, query validity, business answer, tool safety,
+environment outcome — each pass/fail/n/a, plus a trial verdict that is *inconclusive* when a
+planted fault was never reached. The golden set is split into `dev.json` (may inform
+changes) and `heldout.json` (scored only). A no-API **oracle provider** replays each
+case's reference SQL (or, for fault-driven refusal cases, a `probe_sql`) and must score
+100% against the live stack before any paid run means anything.
+
+**Why**:
+
+- Faults like a transient engine error, schema drift mid-request, or a metadata tool dying
+  cannot be produced on demand by a healthy local stack. Planting them client-side keeps the
+  real model, loop and Trino in play while making the failure deterministic.
+- Separate scores say *which layer* failed. "Valid SQL, wrong business answer" is the
+  headline risk (F1) and is invisible to any score that blends validity with correctness.
+- Re-running references keeps ground truth correct after a legitimate dbt rebuild; snapshot
+  pins keep that from silently comparing runs over different data.
+- The oracle turned the first live run into a harness test: it found 22 cases dated past
+  local Gold coverage and a trap case whose month had no data to trap (I22), at zero API cost.
+
+**Alternatives considered**:
+
+- **Drive `POST /v1/questions` over HTTP** (the original §6 wording): rejected for now. The
+  HTTP envelope has no rows and no fault seam; recovering both would mean parsing the
+  service's trace file and adding a test-only fault switch to a production process.
+- **Frozen expected results in the case files**: rejected. They go stale on every dbt
+  rebuild, and a stale expectation is a grader false negative that looks like an agent
+  regression.
+- **Fault injection inside the MCP server**: rejected. It would put test-only branches next
+  to the enforcement code the eval is meant to measure.
+- **LLM-as-judge for business correctness**: still rejected as the metric of record (D8).
+  Answer prose is graded only by an explicit, advisory `answer_must_mention` list.
+
+**Revisit if**: the HTTP service gains behaviour the in-process loop lacks (auth,
+middleware, streaming), so the eval would stop measuring what users hit; dbt rebuilds start
+changing historical values often enough that re-executed references hide real regressions;
+or the case count outgrows hand-written references.
+
+---
+
+## D045 — PLAN Sees Live Column Names and Decides on Structure, Not on Unseen Data
+**Date**: 2026-11-26
+**Status**: accepted (amends architecture §4 "States"; prompt `agent-loop-v3`)
+
+**Decision**: Before PLAN, the loop calls `get_table_schema` for every allow-listed table and
+adds each table's `live_columns` to the catalog PLAN sees. EXPLORE reuses those schemas
+instead of fetching them again. The PLAN prompt says to judge column existence from
+`live_columns`, never from description prose, and never to refuse over whether a date has
+data, because PLAN cannot see rows.
+
+**Why**:
+
+- The first valid paid run's over-refusals all came from PLAN reading descriptions as
+  schemas (I24). It refused market-cap questions on a table that has `market_cap_usd`.
+- Schema reads are metadata calls: they charge no query budget, and five tables add about
+  1k input tokens per request (fast mean 7.5k → 8.4k on dev).
+- The second sentence exists because the first version alone moved PLAN's refusals onto
+  date coverage instead (I24, v2): a consistent 0/3 on a case that passed 3/3 before.
+- Chosen from dev failures only; held-out was scored before and after, never read to pick it.
+
+**Alternatives considered**:
+
+- **Rewrite the dbt descriptions to list every column**: rejected. It fixes this table
+  until the next column is added, and prose would still be competing with structure.
+- **Let PLAN always proceed and refuse only after EXPLORE**: rejected for now. DRAFT has no
+  refusal output, so a question about a missing column would have to be drafted as SQL;
+  adding a post-EXPLORE refusal path is a larger loop change.
+- **Skip the second EXPLAIN when a retry re-drafts identical SQL** (the other dev failure):
+  rejected as this round's fix, because it passes the eval but not a real transient error,
+  which the server charges (I25).
+
+**Consequence**: the two `stale_docs_column` cases are now always inconclusive. PLAN sees
+that the advertised column is not live and refuses before EXPLORE reads the stale docs,
+which is the right answer, but it means those cases no longer test docs-vs-schema
+conflicts. They need rewriting into questions PLAN cannot settle from column names alone.
+
+**Revisit if**: the catalog grows beyond a handful of tables, at which point every request
+paying for every schema stops being cheap and PLAN needs retrieval (§10 `search_catalog`)
+instead; or a post-EXPLORE refusal path lands, which would make PLAN's refusals optional.
+
 ---
 
 ## D046 — The Orchestrator Hands Downstream an Exact Date List, Not a Range

@@ -1,6 +1,6 @@
 # AI-Agent Layer on the Lakehouse — Architecture
 
-**Status:** Phase A MCP boundary and owned loop implemented; eval harness next · **Scope:** New module in the existing lakehouse repo. Extends (never modifies) the running Bronze/Silver/Gold platform: Airflow, PySpark, Iceberg, dbt, Trino on Docker.
+**Status:** Phase A MCP boundary, owned loop, and golden-set eval harness implemented; first paid baseline pending · **Scope:** New module in the existing lakehouse repo. Extends (never modifies) the running Bronze/Silver/Gold platform: Airflow, PySpark, Iceberg, dbt, Trino on Docker.
 
 One track, three phases. Phase A is designed in full depth; Phases B and C are sketches with open questions.
 
@@ -176,8 +176,8 @@ audit before return without retaining row values; execution includes Trino work 
 data caveats. The owned one-shot agent loop is also live as a separate loopback FastAPI
 process and consumes only the MCP HTTP boundary; D035's engine controls still independently
 backstop every query tool. D043 adds the ordered local request trace used to reconstruct
-that loop and supply future eval evidence. The remaining Phase A implementation slice is
-the eval harness.
+that loop and supply eval evidence. D044 adds the golden-set eval harness (§6); what remains
+is running it against the pinned models and acting on the dev-split results.
 
 Design stance worth defending: the AST validator is the **primary** control because it is deterministic, unit-testable, and LLM-independent — you can prove properties about it that you cannot prove about a prompt. The engine backstop exists because the validator is code and code has bugs; a `CREATE TABLE` that somehow survives parsing dies at the grant check. Defense in depth, with each layer catching a different failure class.
 
@@ -216,7 +216,7 @@ stateDiagram-v2
     REFUSE --> [*]
 ```
 
-**States.** `PLAN`: classify the question, shortlist tables via `list_tables` + `get_model_docs`; refuse immediately if Gold can't plausibly answer it. `EXPLORE`: `get_table_schema` (free), `sample_rows` only when value formats are genuinely ambiguous. `DRAFT`: generate SQL with schema + docs in context. `VALIDATE`: `explain_query` — catches syntax/semantic errors without spending a scan. `EXECUTE`: `execute_query`. `CHECK` (deterministic): execution succeeded; result non-empty when the question implies data should exist; column count/types plausible for the question shape; truncation noted. `CRITIC` (thorough only): second LLM call with `{question, sql, result_sample, schemas_used}` → `{verdict: pass|fail, reason}`; a fail buys exactly one refinement attempt, then refusal.
+**States.** `PLAN`: classify the question, shortlist tables via `list_tables` plus every allow-listed table's live column names from `get_table_schema` (free; I24 — descriptions alone made PLAN refuse columns that exist; a table whose read fails is shown as unavailable rather than failing the request, I27); refuse immediately if Gold can't plausibly answer it, but never over whether a date has data, which PLAN cannot see. `EXPLORE`: `get_model_docs`, the already-loaded schema, `sample_rows` only when value formats are genuinely ambiguous. `DRAFT`: generate SQL with schema + docs in context. `VALIDATE`: `explain_query` — catches syntax/semantic errors without spending a scan. `EXECUTE`: `execute_query`. `CHECK` (deterministic): execution succeeded; result non-empty when the question implies data should exist; column count/types plausible for the question shape; truncation noted. `CRITIC` (thorough only): second LLM call with `{question, sql, result_sample, schemas_used}` → `{verdict: pass|fail, reason}`; a fail buys exactly one refinement attempt, then refusal.
 
 **Terminal contract.** Every terminal state emits the same envelope: `{answer | refusal_reason, sql, tables_used, result_stats, caveats[], confidence: passed_checks[], profile, request_id, model_id, prompt_version}`. Exactly one of answer/refusal is non-blank. Best-effort SQL is shown whenever drafting reached SQL, including refusal (R3) — the user is never asked to trust an invisible query or a fabricated placeholder.
 
@@ -275,7 +275,30 @@ new retention, access, redaction, and consent decision.
 | Efficiency | queries, wall time, tokens per question | Budget realism check |
 | Stability | accuracy variance across 3 runs with pinned model, effort, prompt, and data snapshot | Separates model noise from architecture |
 
-**Mechanics.** The harness drives the **agent service API** directly (not through an MCP host — A1's loop is a black box, which is exactly why A2 exists). Every report records: model ID, prompt version, allow-list hash, golden-set version, profile. A result that can't be tied to those five pins is not a result.
+**Mechanics.** The harness drives the **owned agent loop** directly (not through an MCP host — A1's loop is a black box, which is exactly why A2 exists). Every report records: model ID, prompt version, allow-list hash, golden-set version, profile. A result that can't be tied to those five pins is not a result.
+
+**Implementation (2026-11-26, D044).** `ai_agent.eval` is live. It calls `AgentLoop.answer()`
+in-process — the method behind `POST /v1/questions` — because the grader needs the executed
+rows (only the full trace carries them) and fault injection needs the MCP client boundary.
+What it adds beyond the plan above:
+
+- **Split.** 43 cases in `dev.json` (26, may inform changes) and `heldout.json` (17, scored only),
+  one version string. Besides answerable/unanswerable they cover valid-SQL business traps,
+  nonexistent columns, permission denial, schema drift, query limits, retries and partial
+  failures.
+- **Planted faults** on the client side of MCP: structured tool errors on chosen calls, dbt
+  docs advertising a column the live schema lacks, a column vanishing between VALIDATE and
+  EXECUTE. The server and its guardrails are untouched.
+- **Ground truth re-executed** each run through governed `execute_query`; extra pins for
+  Iceberg snapshot IDs per table, golden-set content hash, grader version and git commit.
+  Runs over different snapshots are reported as not comparable.
+- **Five scores per trial** instead of one: retrieval, query validity, business answer, tool
+  safety, environment outcome. Trials that never reached their planted fault, or that ended
+  in an infrastructure error, are *inconclusive* rather than pass/fail (I23).
+- **Oracle provider.** Replays reference SQL with no API calls; it must score 100% before a
+  paid run counts. It found I22.
+
+Grader limitations and the held-out rule live in [`../ai_agent/eval/README.md`](../ai_agent/eval/README.md).
 
 **Rejected alternative:** LLM-as-judge as the primary scorer — judge bias makes the accuracy number indefensible in review. A judge may later *extend* coverage over unlabeled questions, but the golden set remains the metric of record.
 

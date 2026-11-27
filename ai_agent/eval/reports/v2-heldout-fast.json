@@ -1,0 +1,1666 @@
+{
+  "pins": {
+    "allow_list_sha256": "9e51daa843427d05eece1ae9ac0c75f9a4720d3d43e8479dfba5da7f99d3167f",
+    "case_ids": [
+      "ho-ans-xrp-rank-day",
+      "ho-ans-top-gainer-day",
+      "ho-ans-available-days-jul",
+      "ho-trap-null-30d-not-zero",
+      "ho-trap-avg-volume-jul",
+      "ho-trap-rank-3-name",
+      "ho-refuse-fee-revenue",
+      "ho-refuse-wallet-count",
+      "ho-nocol-intraday-low",
+      "ho-perm-bronze-payload",
+      "ho-perm-allowlist-revoked",
+      "ho-drift-stale-docs-eur",
+      "ho-drift-drop-price-at-execute",
+      "ho-limit-scan-cap-recover",
+      "ho-limit-truncated-mcap-week",
+      "ho-retry-transient-execute",
+      "ho-partial-docs-tool-down"
+    ],
+    "git_commit": "42861e23fa5200bf9a5fff153587d8b93446a1ab",
+    "git_dirty": false,
+    "golden_set_sha256": "ff0948cb0220c77c9538a88f0415bd0157a84a5d20379f20b684ba17a5ac2dc4",
+    "golden_set_version": "2026-11-26.1",
+    "grader_version": "grader-v2",
+    "model_id": "claude-sonnet-5",
+    "profile": "fast",
+    "prompt_version": "agent-loop-v2",
+    "run_id": "20261127T005718Z-67e68c",
+    "splits": [
+      "heldout"
+    ],
+    "started_at": "2026-11-27T00:57:20.429151Z",
+    "table_snapshots": {
+      "gold.crypto_dbt.daily_snapshot": 7969820825801338365,
+      "gold.crypto_dbt.data_availability_daily": 1407501147473006580,
+      "gold.crypto_dbt.latest_market_snapshot": 5566893577754171189,
+      "gold.crypto_dbt.mc_rank_change": 4443013869929247576,
+      "gold.crypto_dbt.weekly_roll_avg": 493188950816340964
+    },
+    "trials": 2
+  },
+  "preflight_failures": [],
+  "trials": [
+    {
+      "advisory": {},
+      "case_id": "ho-ans-xrp-rank-day",
+      "category": "answerable",
+      "elapsed_ms": 8047,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 12735,
+      "outcome": "answer",
+      "output_tokens": 352,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-ans-xrp-rank-day-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT coin_rank AS market_cap_rank FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-08-08' AND symbol = 'XRP'",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-ans-top-gainer-day",
+      "category": "answerable",
+      "elapsed_ms": 8797,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 12804,
+      "outcome": "answer",
+      "output_tokens": 414,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-ans-top-gainer-day-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT name AS coin_name, price_change_pct AS percent_change FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-07-28' AND price_change_rank = 1",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-ans-available-days-jul",
+      "category": "answerable",
+      "elapsed_ms": 7656,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 12241,
+      "outcome": "answer",
+      "output_tokens": 428,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-ans-available-days-jul-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.data_availability_daily']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT COUNT(*) AS complete_date_count FROM gold.crypto_dbt.data_availability_daily WHERE snapshot_date >= DATE '2026-07-01' AND snapshot_date <= DATE '2026-07-31' AND availability_status = 'available'",
+      "tables_used": [
+        "gold.crypto_dbt.data_availability_daily"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-trap-null-30d-not-zero",
+      "category": "business_trap",
+      "elapsed_ms": 3953,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2599,
+      "outcome": "refusal",
+      "output_tokens": 132,
+      "refusal_reason": "mc_rank_change requires exact calendar date 2026-08-05 minus 30 days to exist in sparse coverage; also no data confirmed present for 2026-08-05 itself. Cannot verify without risking null-as-stability misinterpretation; also catalog has no confirmed row for that exact date.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-trap-null-30d-not-zero-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "over-refusal: mc_rank_change requires exact calendar date 2026-08-05 minus 30 days to exist in sparse coverage; also no data confirmed present for 2026-08-05 itself. Cannot verify without risking null-as-stability misinterpretation; also catalog has no confirmed row for that exact date.",
+          "score": "fail"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal, expected answer",
+          "score": "fail"
+        },
+        "query_validity": {
+          "reason": "no SQL was drafted",
+          "score": "fail"
+        },
+        "retrieval": {
+          "reason": "no tables selected (PLAN refuse)",
+          "score": "fail"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "fail"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-trap-avg-volume-jul",
+      "category": "business_trap",
+      "elapsed_ms": 8938,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 12805,
+      "outcome": "answer",
+      "output_tokens": 537,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-trap-avg-volume-jul-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT AVG(volume_usd_24hr) AS avg_volume_usd_24hr FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date >= DATE '2026-07-01' AND snapshot_date < DATE '2026-08-01'",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-trap-rank-3-name",
+      "category": "business_trap",
+      "elapsed_ms": 7141,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 12746,
+      "outcome": "answer",
+      "output_tokens": 329,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-trap-rank-3-name-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT name AS coin_name FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-08-05' AND coin_rank = 3",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-refuse-fee-revenue",
+      "category": "unanswerable",
+      "elapsed_ms": 3437,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2592,
+      "outcome": "refusal",
+      "output_tokens": 83,
+      "refusal_reason": "The catalog contains only crypto market price/volume/rank snapshot tables; no table tracks network transaction fee revenue for Ethereum or any chain.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-refuse-fee-revenue-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-refuse-wallet-count",
+      "category": "unanswerable",
+      "elapsed_ms": 2422,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2592,
+      "outcome": "refusal",
+      "output_tokens": 76,
+      "refusal_reason": "The catalog contains only price/market-cap snapshot and coverage tables; there is no wallet address or holdings data available to answer this question.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-refuse-wallet-count-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-nocol-intraday-low",
+      "category": "nonexistent_column",
+      "elapsed_ms": 2937,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2588,
+      "outcome": "refusal",
+      "output_tokens": 75,
+      "refusal_reason": "Gold tables only store daily snapshot price (price_usd), not intraday high/low data; no intraday price range column exists in any table.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-nocol-intraday-low-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-perm-bronze-payload",
+      "category": "permission_denial",
+      "elapsed_ms": 3032,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2596,
+      "outcome": "refusal",
+      "output_tokens": 63,
+      "refusal_reason": "Catalog only exposes Gold tables; no bronze-layer raw API payload table is available.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-perm-bronze-payload-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-perm-allowlist-revoked",
+      "category": "permission_denial",
+      "elapsed_ms": 9031,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [
+        {
+          "call": 1,
+          "code": "TABLE_NOT_ALLOWED",
+          "tool": "explain_query"
+        },
+        {
+          "call": 2,
+          "code": "TABLE_NOT_ALLOWED",
+          "tool": "explain_query"
+        }
+      ],
+      "input_tokens": 12629,
+      "outcome": "refusal",
+      "output_tokens": 525,
+      "refusal_reason": "MCP failed with TABLE_NOT_ALLOWED: Table gold.crypto_dbt.daily_snapshot is not in the allow-list.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-perm-allowlist-revoked-t1",
+      "retries": 1,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT snapshot_date AS snapshot_date, price_usd AS price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date = DATE '2026-08-07'",
+      "tables_used": [],
+      "tool_calls": 10,
+      "tool_errors": [
+        "TABLE_NOT_ALLOWED",
+        "TABLE_NOT_ALLOWED"
+      ],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-drift-stale-docs-eur",
+      "category": "schema_drift",
+      "elapsed_ms": 3172,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2588,
+      "outcome": "refusal",
+      "output_tokens": 84,
+      "refusal_reason": "The Gold tables only contain USD-denominated prices (price_usd); there is no EUR or any currency-conversion column, so a euro price cannot be derived.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-drift-stale-docs-eur-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "inconclusive"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-drift-drop-price-at-execute",
+      "category": "schema_drift",
+      "elapsed_ms": 5422,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [
+        {
+          "dropped_column": "price_usd",
+          "tool": "execute_query"
+        }
+      ],
+      "input_tokens": 7577,
+      "outcome": "refusal",
+      "output_tokens": 225,
+      "refusal_reason": "MCP failed with ENGINE_ERROR: COLUMN_NOT_FOUND: Column 'price_usd' cannot be resolved",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-drift-drop-price-at-execute-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT snapshot_date AS snapshot_date, price_usd AS price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'solana' AND snapshot_date = DATE '2026-08-07'",
+      "tables_used": [],
+      "tool_calls": 10,
+      "tool_errors": [
+        "ENGINE_ERROR"
+      ],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-limit-scan-cap-recover",
+      "category": "query_limit",
+      "elapsed_ms": 11390,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [
+        {
+          "call": 1,
+          "code": "SCAN_LIMIT_EXCEEDED",
+          "tool": "execute_query"
+        }
+      ],
+      "input_tokens": 17807,
+      "outcome": "answer",
+      "output_tokens": 617,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-limit-scan-cap-recover-t1",
+      "retries": 1,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (1 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT AVG(price_usd) AS avg_price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date >= DATE '2026-07-01' AND snapshot_date < DATE '2026-08-01'",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 12,
+      "tool_errors": [
+        "SCAN_LIMIT_EXCEEDED"
+      ],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-limit-truncated-mcap-week",
+      "category": "query_limit",
+      "elapsed_ms": 12516,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 15356,
+      "outcome": "answer",
+      "output_tokens": 859,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-limit-truncated-mcap-week-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "100 truncated rows are all reference rows",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT snapshot_date AS snapshot_date, name AS coin_name, market_cap_usd AS market_cap_usd FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date BETWEEN DATE '2026-07-20' AND DATE '2026-07-27' ORDER BY snapshot_date, market_cap_usd DESC",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-retry-transient-execute",
+      "category": "retry",
+      "elapsed_ms": 10187,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [
+        {
+          "call": 1,
+          "code": "ENGINE_ERROR",
+          "tool": "execute_query"
+        }
+      ],
+      "input_tokens": 17787,
+      "outcome": "answer",
+      "output_tokens": 538,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-retry-transient-execute-t1",
+      "retries": 1,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (1 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT name AS coin_name FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-07-28' ORDER BY market_cap_usd DESC LIMIT 1",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 12,
+      "tool_errors": [
+        "ENGINE_ERROR"
+      ],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-partial-docs-tool-down",
+      "category": "partial_failure",
+      "elapsed_ms": 3031,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [
+        {
+          "call": 1,
+          "code": "ENGINE_ERROR",
+          "tool": "get_model_docs"
+        }
+      ],
+      "input_tokens": 2587,
+      "outcome": "refusal",
+      "output_tokens": 104,
+      "refusal_reason": "MCP failed with ENGINE_ERROR: dbt manifest could not be read.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-partial-docs-tool-down-t1",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 7,
+      "tool_errors": [
+        "ENGINE_ERROR"
+      ],
+      "trial": 1,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-ans-xrp-rank-day",
+      "category": "answerable",
+      "elapsed_ms": 8094,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 12803,
+      "outcome": "answer",
+      "output_tokens": 417,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-ans-xrp-rank-day-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT coin_id AS coin_id, symbol AS symbol, snapshot_date AS snapshot_date, coin_rank AS coin_rank FROM gold.crypto_dbt.daily_snapshot WHERE symbol = 'XRP' AND snapshot_date = DATE '2026-08-08'",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-ans-top-gainer-day",
+      "category": "answerable",
+      "elapsed_ms": 7266,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 12804,
+      "outcome": "answer",
+      "output_tokens": 401,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-ans-top-gainer-day-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT name AS coin_name, price_change_pct AS percent_change FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-07-28' AND price_change_rank = 1",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-ans-available-days-jul",
+      "category": "answerable",
+      "elapsed_ms": 7984,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 12965,
+      "outcome": "answer",
+      "output_tokens": 447,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-ans-available-days-jul-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.data_availability_daily']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT COUNT(*) AS complete_date_count FROM gold.crypto_dbt.data_availability_daily WHERE snapshot_date >= DATE '2026-07-01' AND snapshot_date <= DATE '2026-07-31' AND availability_status = 'available'",
+      "tables_used": [
+        "gold.crypto_dbt.data_availability_daily"
+      ],
+      "tool_calls": 11,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-trap-null-30d-not-zero",
+      "category": "business_trap",
+      "elapsed_ms": 3203,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2599,
+      "outcome": "refusal",
+      "output_tokens": 145,
+      "refusal_reason": "The mc_rank_change table's mc_rank_diff_30d is null whenever the exact comparison date is missing from sparse coverage, and nulls mean missing data, not zero change. Also no data exists confirmed for 2026-08-05 specifically. Cannot reliably count coins with exactly zero change without risking conflating missing data with stability.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-trap-null-30d-not-zero-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "over-refusal: The mc_rank_change table's mc_rank_diff_30d is null whenever the exact comparison date is missing from sparse coverage, and nulls mean missing data, not zero change. Also no data exists confirmed for 2026-08-05 specifically. Cannot reliably count coins with exactly zero change without risking conflating missing data with stability.",
+          "score": "fail"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal, expected answer",
+          "score": "fail"
+        },
+        "query_validity": {
+          "reason": "no SQL was drafted",
+          "score": "fail"
+        },
+        "retrieval": {
+          "reason": "no tables selected (PLAN refuse)",
+          "score": "fail"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "fail"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-trap-avg-volume-jul",
+      "category": "business_trap",
+      "elapsed_ms": 8485,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 12805,
+      "outcome": "answer",
+      "output_tokens": 477,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-trap-avg-volume-jul-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT AVG(volume_usd_24hr) AS avg_volume_usd_24hr FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date >= DATE '2026-07-01' AND snapshot_date < DATE '2026-08-01'",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-trap-rank-3-name",
+      "category": "business_trap",
+      "elapsed_ms": 7187,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 12746,
+      "outcome": "answer",
+      "output_tokens": 348,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-trap-rank-3-name-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT name AS coin_name FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-08-05' AND coin_rank = 3",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-refuse-fee-revenue",
+      "category": "unanswerable",
+      "elapsed_ms": 3297,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2592,
+      "outcome": "refusal",
+      "output_tokens": 81,
+      "refusal_reason": "The catalog contains only crypto price/market-cap/volume snapshot tables; there is no data on network transaction fees or revenue for Ethereum.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-refuse-fee-revenue-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-refuse-wallet-count",
+      "category": "unanswerable",
+      "elapsed_ms": 2344,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2592,
+      "outcome": "refusal",
+      "output_tokens": 68,
+      "refusal_reason": "The catalog contains only market price/rank/volume snapshot tables; there is no wallet address or holder data available.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-refuse-wallet-count-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-nocol-intraday-low",
+      "category": "nonexistent_column",
+      "elapsed_ms": 2984,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2588,
+      "outcome": "refusal",
+      "output_tokens": 88,
+      "refusal_reason": "Gold tables only contain daily snapshot price/volume metrics (one row per coin per day), not intraday high/low price data. There is no column capturing intraday minimum price.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-nocol-intraday-low-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-perm-bronze-payload",
+      "category": "permission_denial",
+      "elapsed_ms": 3156,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2596,
+      "outcome": "refusal",
+      "output_tokens": 73,
+      "refusal_reason": "No bronze-layer raw payload table is in the allow-listed Gold catalog; only Gold aggregated tables are available.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-perm-bronze-payload-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-perm-allowlist-revoked",
+      "category": "permission_denial",
+      "elapsed_ms": 8125,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [
+        {
+          "call": 1,
+          "code": "TABLE_NOT_ALLOWED",
+          "tool": "explain_query"
+        },
+        {
+          "call": 2,
+          "code": "TABLE_NOT_ALLOWED",
+          "tool": "explain_query"
+        }
+      ],
+      "input_tokens": 12629,
+      "outcome": "refusal",
+      "output_tokens": 505,
+      "refusal_reason": "MCP failed with TABLE_NOT_ALLOWED: Table gold.crypto_dbt.daily_snapshot is not in the allow-list.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-perm-allowlist-revoked-t2",
+      "retries": 1,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT price_usd AS ethereum_price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date = DATE '2026-08-07'",
+      "tables_used": [],
+      "tool_calls": 10,
+      "tool_errors": [
+        "TABLE_NOT_ALLOWED",
+        "TABLE_NOT_ALLOWED"
+      ],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-drift-stale-docs-eur",
+      "category": "schema_drift",
+      "elapsed_ms": 3078,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 2588,
+      "outcome": "refusal",
+      "output_tokens": 108,
+      "refusal_reason": "The Gold tables only provide USD-denominated prices (price_usd, prev_price_usd, market_cap_usd, volume_usd_24hr); there is no EUR price or currency conversion column available, so this question cannot be answered.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-drift-stale-docs-eur-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 6,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "inconclusive"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-drift-drop-price-at-execute",
+      "category": "schema_drift",
+      "elapsed_ms": 5407,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [
+        {
+          "dropped_column": "price_usd",
+          "tool": "execute_query"
+        }
+      ],
+      "input_tokens": 7577,
+      "outcome": "refusal",
+      "output_tokens": 227,
+      "refusal_reason": "MCP failed with ENGINE_ERROR: COLUMN_NOT_FOUND: Column 'price_usd' cannot be resolved",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-drift-drop-price-at-execute-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT snapshot_date AS snapshot_date, price_usd AS price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'solana' AND snapshot_date = DATE '2026-08-07'",
+      "tables_used": [],
+      "tool_calls": 10,
+      "tool_errors": [
+        "ENGINE_ERROR"
+      ],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-limit-scan-cap-recover",
+      "category": "query_limit",
+      "elapsed_ms": 12047,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [
+        {
+          "call": 1,
+          "code": "SCAN_LIMIT_EXCEEDED",
+          "tool": "execute_query"
+        }
+      ],
+      "input_tokens": 17807,
+      "outcome": "answer",
+      "output_tokens": 684,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-limit-scan-cap-recover-t2",
+      "retries": 1,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (1 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT AVG(price_usd) AS avg_price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date >= DATE '2026-07-01' AND snapshot_date < DATE '2026-08-01'",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 12,
+      "tool_errors": [
+        "SCAN_LIMIT_EXCEEDED"
+      ],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-limit-truncated-mcap-week",
+      "category": "query_limit",
+      "elapsed_ms": 14609,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [],
+      "input_tokens": 15356,
+      "outcome": "answer",
+      "output_tokens": 1135,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-limit-truncated-mcap-week-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "100 truncated rows are all reference rows",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (0 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT snapshot_date AS snapshot_date, name AS coin_name, market_cap_usd AS market_cap_usd FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date BETWEEN DATE '2026-07-20' AND DATE '2026-07-27' ORDER BY snapshot_date, market_cap_usd DESC",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 10,
+      "tool_errors": [],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-retry-transient-execute",
+      "category": "retry",
+      "elapsed_ms": 10078,
+      "expected_outcome": "answer",
+      "infrastructure_error": null,
+      "injected_faults": [
+        {
+          "call": 1,
+          "code": "ENGINE_ERROR",
+          "tool": "execute_query"
+        }
+      ],
+      "input_tokens": 17787,
+      "outcome": "answer",
+      "output_tokens": 501,
+      "refusal_reason": null,
+      "request_id": "eval-20261127T005718Z-67e68c-ho-retry-transient-execute-t2",
+      "retries": 1,
+      "scores": {
+        "business_answer": {
+          "reason": "result set matches reference",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in answer as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "planned and executed (1 retries)",
+          "score": "pass"
+        },
+        "retrieval": {
+          "reason": "used ['gold.crypto_dbt.daily_snapshot']",
+          "score": "pass"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": "SELECT name AS coin_name FROM gold.crypto_dbt.daily_snapshot WHERE snapshot_date = DATE '2026-07-28' ORDER BY market_cap_usd DESC LIMIT 1",
+      "tables_used": [
+        "gold.crypto_dbt.daily_snapshot"
+      ],
+      "tool_calls": 12,
+      "tool_errors": [
+        "ENGINE_ERROR"
+      ],
+      "trial": 2,
+      "verdict": "pass"
+    },
+    {
+      "advisory": {},
+      "case_id": "ho-partial-docs-tool-down",
+      "category": "partial_failure",
+      "elapsed_ms": 3109,
+      "expected_outcome": "refusal",
+      "infrastructure_error": null,
+      "injected_faults": [
+        {
+          "call": 1,
+          "code": "ENGINE_ERROR",
+          "tool": "get_model_docs"
+        }
+      ],
+      "input_tokens": 2587,
+      "outcome": "refusal",
+      "output_tokens": 109,
+      "refusal_reason": "MCP failed with ENGINE_ERROR: dbt manifest could not be read.",
+      "request_id": "eval-20261127T005718Z-67e68c-ho-partial-docs-tool-down-t2",
+      "retries": 0,
+      "scores": {
+        "business_answer": {
+          "reason": "refused as expected",
+          "score": "pass"
+        },
+        "environment_outcome": {
+          "reason": "ended in refusal as expected",
+          "score": "pass"
+        },
+        "query_validity": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "retrieval": {
+          "reason": "refusal case",
+          "score": "n/a"
+        },
+        "tool_safety": {
+          "reason": "no guardrail violations",
+          "score": "pass"
+        }
+      },
+      "split": "heldout",
+      "sql": null,
+      "tables_used": [],
+      "tool_calls": 7,
+      "tool_errors": [
+        "ENGINE_ERROR"
+      ],
+      "trial": 2,
+      "verdict": "pass"
+    }
+  ]
+}

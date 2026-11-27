@@ -327,7 +327,71 @@ def test_plan_can_refuse_without_drafting_or_touching_business_rows():
     assert result.answer is None
     assert result.refusal_reason == "not in Gold"
     assert result.sql is None
-    assert [name for name, _ in tools.calls] == ["list_tables"]
+    # PLAN reads metadata only (catalog + live schema); nothing that charges a budget.
+    assert {name for name, _ in tools.calls} == {"list_tables", "get_table_schema"}
+
+
+def test_plan_sees_live_columns_and_explore_reuses_the_schema():
+    """I24: PLAN refused market-cap questions because the table description did not
+    mention market cap. It must see the live column names, not only the prose."""
+    provider = FakeProvider(
+        plan=[plan()],
+        draft=[draft()],
+        answer=[AnswerDecision(answer="ok", caveats=())],
+    )
+    tools = FakeTools()
+
+    run(AgentLoop(provider, FakeGateway(tools)))
+
+    plan_prompt = provider.calls[0]["prompt"]
+    assert '"live_columns"' in plan_prompt
+    # One schema read per catalog table, at PLAN; EXPLORE does not fetch it again.
+    schema_reads = [value for name, value in tools.calls if name == "get_table_schema"]
+    assert len(schema_reads) == len(set(schema_reads))
+
+
+BROKEN = "gold.crypto_dbt.weekly_roll_avg"
+
+
+class OneBrokenSchemaTools(FakeTools):
+    """A two-table catalog where one table's metadata cannot be read."""
+
+    async def list_tables(self):
+        healthy = await super().list_tables()
+        return healthy + (TableSummary(table=BROKEN, description="Rolling averages."),)
+
+    async def get_table_schema(self, table):
+        if table == BROKEN:
+            self.calls.append(("get_table_schema", table))
+            raise ToolCallError("ENGINE_ERROR", "metadata unavailable", retryable=True)
+        return await super().get_table_schema(table)
+
+
+def test_one_unavailable_schema_does_not_block_questions_about_other_tables():
+    provider = FakeProvider(
+        plan=[plan()],
+        draft=[draft()],
+        answer=[AnswerDecision(answer="BTC is available.", caveats=())],
+    )
+    tools = OneBrokenSchemaTools()
+
+    result = run(AgentLoop(provider, FakeGateway(tools)))
+
+    assert result.answer == "BTC is available."
+    plan_prompt = provider.calls[0]["prompt"]
+    assert '"live_columns": null' in plan_prompt
+    assert "temporarily unavailable" in plan_prompt
+
+
+def test_unavailable_schema_of_a_selected_table_refuses_after_one_retry():
+    provider = FakeProvider(plan=[plan(tables=(BROKEN,))])
+    tools = OneBrokenSchemaTools()
+
+    result = run(AgentLoop(provider, FakeGateway(tools)))
+
+    assert result.answer is None
+    assert "metadata unavailable" in result.refusal_reason
+    assert [value for name, value in tools.calls if name == "get_table_schema"].count(BROKEN) == 2
 
 
 def test_unknown_or_excessive_plan_is_refused_deterministically():
@@ -533,3 +597,26 @@ def test_missing_request_id_is_generated_once_and_reused_by_tools():
     )
     assert explained[1]["request_id"] == result.request_id
     assert executed_call[1]["request_id"] == result.request_id
+
+
+class TaskGroupGateway:
+    """Mimics the MCP HTTP client: the session body runs inside a task group."""
+
+    def __init__(self, tools):
+        self.tools = tools
+
+    @asynccontextmanager
+    async def session(self):
+        async with asyncio.TaskGroup() as group:
+            group.create_task(asyncio.sleep(0))
+            yield self.tools
+
+
+def test_provider_error_inside_task_group_session_keeps_its_reason():
+    provider = FakeProvider(plan=[ProviderError("Claude plan request failed: 401 invalid x-api-key")])
+    response = asyncio.run(
+        AgentLoop(provider, TaskGroupGateway(FakeTools())).answer(
+            AgentRequest(question="What was Bitcoin's price?", profile="fast")
+        )
+    )
+    assert response.refusal_reason == "Claude plan request failed: 401 invalid x-api-key"

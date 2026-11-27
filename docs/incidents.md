@@ -538,6 +538,195 @@ not be able to silence the only indication that telemetry is being lost.
 
 ---
 
+## I22 — A third of the first golden set asked about days local Gold does not have
+**Date**: 2026-11-26 · **Status**: fixed before release
+
+**Symptom**: The first oracle run (no API, reference SQL replayed through the agent loop)
+skipped 7 of 23 answer cases because their reference returned no rows, and failed a
+row-cap case that returned 50 rows where about 155 were expected. Every case that did pass
+looked fine, including `ho-trap-null-30d-not-zero`, whose reference was `count(*) = 0`.
+
+**Root cause**: 22 cases were written with August dates after 2026-08-10. Cloud capture
+has kept running, but local Gold stops at 2026-08-10, the last time the laptop's transforms
+ran. The empty-result preflight caught lookups. It could not catch aggregates: `COUNT`
+over a missing date returns one row with `0`, and `AVG` over a half-present month returns a
+real-looking number. A second, independent case bug surfaced the same way: Bitcoin has no
+24-hour volume on any February 2026 day (all history-repaired, D024), so the "zero-filled
+volume" trap returned NULL and had nothing to trap.
+
+**Fix**: All case dates moved inside 2026-01-14 → 2026-08-10, with August-wide ranges moved
+to July. The preflight now also rejects a one-row, all-zero/NULL reference unless the case
+sets `allow_degenerate_reference`. A test pins every case date inside local coverage. The
+volume trap moved to July, where 7 of 28 Bitcoin days lack volume. The next oracle run:
+43/43 conclusive, 43/43 pass.
+
+**Lesson**: An "is the result empty?" guard does not work for aggregates, which always
+return a row. Ground truth needs a no-cost dry run against the real data before it is
+allowed to score anything; the oracle found all of this before a single paid model call.
+
+---
+
+## I23 — An invalid API key scored as a perfect refusal rate
+**Date**: 2026-11-26 · **Status**: fixed before release (the key itself is still invalid)
+
+**Symptom**: The first paid dev run reported a 37% pass rate, a **100% refusal catch rate**,
+0% execution accuracy, and zero tokens. Every trial's refusal reason was `Agent
+infrastructure failed: unhandled errors in a TaskGroup (1 sub-exception)`.
+
+**Root cause**: Two layers each hid the real error, a 401 `invalid x-api-key` from the
+Messages API. (1) The loop raises `ProviderError` inside the MCP HTTP client's session,
+whose task group re-raises it wrapped in an `ExceptionGroup`. The loop's `except
+ProviderError` never matched; the catch-all produced the TaskGroup message. (2) The grader
+treated any refusal on a refusal case as correct, so seven crashed trials counted as the
+agent correctly declining unanswerable questions.
+
+**Fix**: `_session_within` unwraps a single-leaf exception group that carries the loop's own
+exception and re-raises the original, so the refusal now reads `Claude plan request
+failed: … 401 …`. A regression test runs the loop against a gateway that, like the MCP client,
+yields inside a task group. Grader v2 marks trials whose refusal came from infrastructure
+(`Agent infrastructure failed`, `… request failed: …`, or an MCP session that never opened)
+as **inconclusive**, with the cause in the report.
+
+**Lesson**: A refusal is only evidence of judgement if a decision produced it. Any metric
+that rewards refusing will also reward crashing unless the grader can tell the two apart.
+And an exception-translating `except` chain stops working the moment an async context
+manager wraps what passes through it.
+
+---
+
+## I24 — PLAN refused answerable questions from table descriptions it could not check
+**Date**: 2026-11-26 · **Status**: fixed (`agent-loop-v3`)
+
+**Symptom**: The first valid paid dev run (fast, `agent-loop-v1`) had a 14% over-refusal
+rate, and every over-refusal ended at PLAN after a single `list_tables` call. "Ethereum's
+market cap on 2026-08-05" was refused because "daily_snapshot does not include a market cap
+column". It does: `market_cap_usd`. "Bitcoin's average price over 2026-03-12..03-18" was
+refused because "no table supports a strict calendar-day average", although
+`avg(price_usd)` over `daily_snapshot` answers it. On held-out the over-refusal rate was 28%.
+
+**Root cause**: PLAN saw only table names and descriptions, while its prompt told it to
+"refuse unsupported … facts". `daily_snapshot`'s description lists "price, market-cap
+rank, and the day-over-day price change", so the model read the absence of "market cap"
+in prose as the absence of a column. The live schema was only fetched in EXPLORE, after
+the decision to refuse had already been made.
+
+**Fix**: PLAN reads each allow-listed table's live schema (metadata calls, which do not
+charge the query budget) and gets `live_columns` next to each description. EXPLORE reuses
+those schemas. The first version (`agent-loop-v2`) caused a regression of its own:
+`ans-top5-mcap-names` went from 3/3 pass on v1 to 0/3 on v2, with PLAN now refusing
+because 2026-08-01 "may not exist". One refusal quoted "as of 2026-07-31" from the
+`mc_rank_change` description as the end of coverage. `agent-loop-v3` adds that PLAN
+cannot see rows, so dates in descriptions are not coverage bounds and whether a date
+has data is left to EXECUTE and CHECK; the case returned to 3/3. Reports:
+`ai_agent/eval/reports/{baseline,v2,after}-*-fast`, `v{1,2,3}-top5-repeat`.
+
+**Lesson**: A model shown prose instead of structure will treat the prose as structure.
+And a fix that adds context can shift a decision somewhere unrelated: v2's aggregate
+improvement hid a consistent new failure that only a per-case comparison and repeated
+trials exposed.
+
+---
+
+## I25 — On the fast profile, one engine retry does not fit the budget
+**Date**: 2026-11-26 · **Status**: open (documented; not fixed)
+
+**Symptom**: `retry-transient-execute` failed on the v1 baseline with `BUDGET_EXCEEDED`
+after 9 tool calls. On v2 it passed, but only because PLAN stopped requesting a sample.
+
+**Root cause**: The fast budget is 3 engine calls (`sample_rows`, `explain_query`,
+`execute_query` each charge one). A recovery after a transient EXECUTE error re-drafts and
+re-runs EXPLAIN, even on identical SQL, so sample + EXPLAIN + EXECUTE + EXPLAIN + EXECUTE
+needs 5. Without a sample it needs 4 in production, because the server charges the budget
+*before* Trino fails. The eval undercounts it: the planted fault raises on the client side
+without reaching the server, so it charges nothing, and the case passes on 3.
+
+**Fix**: None yet. Skipping the second EXPLAIN for identical SQL was rejected as the fix
+for this round: it would make the eval case pass while a real transient error would
+still exhaust the budget. Options are a fast-profile limit of 4, or not re-validating SQL
+that already passed EXPLAIN in the same request. The eval README records the undercount
+as a known grader limitation.
+
+**Lesson**: A planted fault has to cost what the real fault costs, or the eval measures a
+system that does not exist.
+
+---
+
+## I26 — Provider failures other than "request failed" still scored as correct refusals
+**Date**: 2026-11-26 · **Status**: fixed before release (grader-v3) · **Found by**: PR #31 review
+
+**Symptom**: None observed in a run yet; found in review. Grader-v2 (I23's fix) recognized
+infrastructure refusals by message text: `Agent infrastructure failed` or `… request
+failed: …`. The provider raises three other messages: `stopped with reason 'max_tokens'`
+(or `'refusal'`), `returned N text blocks; expected one`, and `returned an invalid
+structured response`. On a refusal case each would have been graded as the agent correctly
+declining, although no decision was made.
+
+**Root cause**: The grader matched the symptom (the refusal sentence) rather than the
+event. Every provider failure already writes an `llm.completed` trace event with status
+`failed`; the message differs by failure kind, the event does not.
+
+**Fix**: `_infrastructure_error` treats any failed `llm.completed` event as an
+infrastructure error, naming the stage and error type. `GRADER_VERSION` is `grader-v3`, so
+`compare` reports runs graded by v2 as not comparable.
+
+**Lesson**: I23's lesson applied only halfway. Telling a crash from a decision has to use
+the structured record of what happened, not the text the crash happened to print.
+
+---
+
+## I27 — One unavailable table schema blocked questions about every table
+**Date**: 2026-11-26 · **Status**: fixed before release · **Found by**: PR #31 review
+
+**Symptom**: None observed in a run yet; found in review. D045 made the loop read every
+allow-listed table's schema before PLAN. A failed read raised `ToolCallError` to the
+request's outer handler, so metadata for `weekly_roll_avg` being unavailable would have
+refused a Bitcoin price lookup that only needs `daily_snapshot`. Before D045 only the
+selected tables' schemas were required.
+
+**Root cause**: Moving a read earlier also widened what it is allowed to break. The new
+prefetch inherited EXPLORE's fail-the-request semantics, which were right for selected
+tables and wrong for all of them.
+
+**Fix**: `_catalog_schemas` reads table by table and records a failed read as `None`. PLAN
+then sees that table with `live_columns: null` and a status note saying the schema is
+temporarily unavailable, not that it has no columns. The note is in the data rather than
+the prompt, so the healthy-path prompt is unchanged from `agent-loop-v3`. If PLAN still
+selects that table, EXPLORE retries the read once, and that failure is fatal, as before.
+Two loop tests cover both paths.
+
+**Lesson**: When a step moves earlier in a pipeline, check what its failure now blocks.
+
+---
+
+## I28 — Pins and comparisons trusted more than they checked
+**Date**: 2026-11-26 · **Status**: fixed before release · **Found by**: PR #31 review
+
+**Symptom**: None observed in a run yet; found in review. Two ways a before/after report
+could mislead with no warning:
+
+1. Snapshots were pinned once, before the references and the trials. A dbt rebuild during
+   a run would grade agent results against references read from different data, while the
+   report still showed the starting snapshot IDs.
+2. `compare` checked the golden-set hash but not which cases were scored. A full run
+   compared with a `--case` subset, another split, or a run that skipped a case at
+   preflight would show its delta as if it covered the same cases.
+
+**Root cause**: Both checks inspected the *inputs* that were the same (golden set,
+starting snapshots), not what the run actually *covered* (data at the end, cases scored).
+
+**Fix**: The runner re-reads snapshots after the last trial, stores
+`table_snapshots_after` and `data_changed`, and prints a warning. A changed run has a
+"Data changed during this run" banner in its report, and `compare` lists it under "Not
+directly comparable". `compare` also flags scored case sets that differ, naming the cases
+on each side. Reports written before this change lack both fields and are read as
+unchanged. Running every query at a fixed snapshot (`FOR VERSION AS OF`) was rejected: it
+would mean rewriting the agent's own SQL, which changes what is being measured.
+
+**Lesson**: A pin records what a run started from; only a check at the end shows the run
+stayed there.
+
+---
+
 ## I29 — One day the capture never ran stranded a 107-day catch-up in Bronze
 **Date**: 2026-11-26 · **Status**: fixed (code); catch-up run pending
 

@@ -4,7 +4,8 @@
 > `explain_query`, capped/audited `sample_rows`, and row/scan/time-bounded `execute_query`
 > are exposed over MCP stdio and loopback streamable HTTP. A separate loopback FastAPI
 > service turns one natural-language question into an answer or visible refusal. It also
-> writes a complete ordered local trace by default. The eval harness is next.
+> writes a complete ordered local trace by default. A golden-set eval harness (`eval/`)
+> scores the loop on 43 dev/held-out cases with planted faults; see `eval/README.md`.
 
 ## Purpose
 
