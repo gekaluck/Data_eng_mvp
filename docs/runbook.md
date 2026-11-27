@@ -481,7 +481,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8010/v1/questions `
 
 Expected: HTTP 200 with exactly one of `answer` or `refusal_reason`, plus `sql`,
 `tables_used`, `result_stats`, `caveats`, passed `confidence` checks, the selected
-`model_id`, and `prompt_version=agent-loop-v1`. Runtime failures are deliberate terminal
+`model_id`, and `prompt_version=agent-loop-v3`. Runtime failures are deliberate terminal
 refusals, not HTTP 500 answers fabricated from model memory. Invalid request shape/profile
 returns HTTP 422.
 
@@ -621,6 +621,16 @@ Reports land in `ai_agent/eval/reports/<name>.md` and `.json`. When a number loo
   the delta.
 - **`business_answer` fails but the answer looks right.** Check the README's grader
   limitations first (identifier choice, display rounding) before changing the agent.
+- **The aggregate improved but one case flipped.** Read the per-case table in `compare`,
+  then rerun that case alone with `--case <id> --trials 3` on both versions before calling it
+  noise. A 0/3 against a 3/3 is a regression the average hid (I24).
+- **Re-running an older commit for comparison.** Use a throwaway worktree
+  (`git worktree add --detach <dir> <commit>`) and copy `dbt/artifacts/` into it: it is
+  untracked, and without it the harness's MCP server exits at startup and the run dies with
+  `ProcessLookupError` before the first trial. Remove the worktree afterwards.
+- **A fast-profile retry case fails with `BUDGET_EXCEEDED`.** Expected while I25 is open:
+  three engine calls cannot hold sample + EXPLAIN + EXECUTE + a retry. A pass on that case
+  is also weaker than it looks, because planted faults do not charge the budget.
 
 ### History backfill succeeded but expected dates are missing
 

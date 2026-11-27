@@ -1744,3 +1744,45 @@ case's reference SQL (or, for fault-driven refusal cases, a `probe_sql`) and mus
 middleware, streaming), so the eval would stop measuring what users hit; dbt rebuilds start
 changing historical values often enough that re-executed references hide real regressions;
 or the case count outgrows hand-written references.
+
+---
+
+## D045 — PLAN Sees Live Column Names and Decides on Structure, Not on Unseen Data
+**Date**: 2026-11-26
+**Status**: accepted (amends architecture §4 "States"; prompt `agent-loop-v3`)
+
+**Decision**: Before PLAN, the loop calls `get_table_schema` for every allow-listed table and
+adds each table's `live_columns` to the catalog PLAN sees. EXPLORE reuses those schemas
+instead of fetching them again. The PLAN prompt says to judge column existence from
+`live_columns`, never from description prose, and never to refuse over whether a date has
+data, because PLAN cannot see rows.
+
+**Why**:
+
+- The first valid paid run's over-refusals all came from PLAN reading descriptions as
+  schemas (I24). It refused market-cap questions on a table that has `market_cap_usd`.
+- Schema reads are metadata calls: they charge no query budget, and five tables add about
+  1k input tokens per request (fast mean 7.5k → 8.4k on dev).
+- The second sentence exists because the first version alone moved PLAN's refusals onto
+  date coverage instead (I24, v2): a consistent 0/3 on a case that passed 3/3 before.
+- Chosen from dev failures only; held-out was scored before and after, never read to pick it.
+
+**Alternatives considered**:
+
+- **Rewrite the dbt descriptions to list every column**: rejected. It fixes this table
+  until the next column is added, and prose would still be competing with structure.
+- **Let PLAN always proceed and refuse only after EXPLORE**: rejected for now. DRAFT has no
+  refusal output, so a question about a missing column would have to be drafted as SQL;
+  adding a post-EXPLORE refusal path is a larger loop change.
+- **Skip the second EXPLAIN when a retry re-drafts identical SQL** (the other dev failure):
+  rejected as this round's fix, because it passes the eval but not a real transient error,
+  which the server charges (I25).
+
+**Consequence**: the two `stale_docs_column` cases are now always inconclusive. PLAN sees
+that the advertised column is not live and refuses before EXPLORE reads the stale docs,
+which is the right answer, but it means those cases no longer test docs-vs-schema
+conflicts. They need rewriting into questions PLAN cannot settle from column names alone.
+
+**Revisit if**: the catalog grows beyond a handful of tables, at which point every request
+paying for every schema stops being cheap and PLAN needs retrieval (§10 `search_catalog`)
+instead; or a post-EXPLORE refusal path lands, which would make PLAN's refusals optional.

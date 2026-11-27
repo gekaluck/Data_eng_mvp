@@ -594,6 +594,63 @@ manager wraps what passes through it.
 
 ---
 
+## I24 — PLAN refused answerable questions from table descriptions it could not check
+**Date**: 2026-11-26 · **Status**: fixed (`agent-loop-v3`)
+
+**Symptom**: The first valid paid dev run (fast, `agent-loop-v1`) had a 14% over-refusal
+rate, and every over-refusal ended at PLAN after a single `list_tables` call. "Ethereum's
+market cap on 2026-08-05" was refused because "daily_snapshot does not include a market cap
+column". It does: `market_cap_usd`. "Bitcoin's average price over 2026-03-12..03-18" was
+refused because "no table supports a strict calendar-day average", although
+`avg(price_usd)` over `daily_snapshot` answers it. On held-out the over-refusal rate was 28%.
+
+**Root cause**: PLAN saw only table names and descriptions, while its prompt told it to
+"refuse unsupported … facts". `daily_snapshot`'s description lists "price, market-cap
+rank, and the day-over-day price change", so the model read the absence of "market cap"
+in prose as the absence of a column. The live schema was only fetched in EXPLORE, after
+the decision to refuse had already been made.
+
+**Fix**: PLAN reads each allow-listed table's live schema (metadata calls, which do not
+charge the query budget) and gets `live_columns` next to each description. EXPLORE reuses
+those schemas. The first version (`agent-loop-v2`) caused a regression of its own:
+`ans-top5-mcap-names` went from 3/3 pass on v1 to 0/3 on v2, with PLAN now refusing
+because 2026-08-01 "may not exist". One refusal quoted "as of 2026-07-31" from the
+`mc_rank_change` description as the end of coverage. `agent-loop-v3` adds that PLAN
+cannot see rows, so dates in descriptions are not coverage bounds and whether a date
+has data is left to EXECUTE and CHECK; the case returned to 3/3. Reports:
+`ai_agent/eval/reports/{baseline,v2,after}-*-fast`, `v{1,2,3}-top5-repeat`.
+
+**Lesson**: A model shown prose instead of structure will treat the prose as structure.
+And a fix that adds context can shift a decision somewhere unrelated: v2's aggregate
+improvement hid a consistent new failure that only a per-case comparison and repeated
+trials exposed.
+
+---
+
+## I25 — On the fast profile, one engine retry does not fit the budget
+**Date**: 2026-11-26 · **Status**: open (documented; not fixed)
+
+**Symptom**: `retry-transient-execute` failed on the v1 baseline with `BUDGET_EXCEEDED`
+after 9 tool calls. On v2 it passed, but only because PLAN stopped requesting a sample.
+
+**Root cause**: The fast budget is 3 engine calls (`sample_rows`, `explain_query`,
+`execute_query` each charge one). A recovery after a transient EXECUTE error re-drafts and
+re-runs EXPLAIN, even on identical SQL, so sample + EXPLAIN + EXECUTE + EXPLAIN + EXECUTE
+needs 5. Without a sample it needs 4 in production, because the server charges the budget
+*before* Trino fails. The eval undercounts it: the planted fault raises on the client side
+without reaching the server, so it charges nothing, and the case passes on 3.
+
+**Fix**: None yet. Skipping the second EXPLAIN for identical SQL was rejected as the fix
+for this round: it would make the eval case pass while a real transient error would
+still exhaust the budget. Options are a fast-profile limit of 4, or not re-validating SQL
+that already passed EXPLAIN in the same request. The eval README records the undercount
+as a known grader limitation.
+
+**Lesson**: A planted fault has to cost what the real fault costs, or the eval measures a
+system that does not exist.
+
+---
+
 ## Hardening items
 
 None open. H1–H6 have all landed.

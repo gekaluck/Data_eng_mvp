@@ -99,6 +99,23 @@ is a deliberate act.
 | False positive | Truncated-subset cases pass on any 100 reference rows | Containment cannot tell which 100 rows a user needed | Those cases also require the truncation caveat |
 | False negative | A truly equivalent result whose rounding straddles the 6th significant digit (truncated cases only) | Subset check rounds instead of using a tolerance | Rare; inspect before acting |
 | Blind spot | The oracle refuses refusal cases without faults at PLAN | It knows the answer | Oracle runs prove harness wiring, never agent quality |
+| False positive | A retry case passes on the fast profile | A planted execute error fails on the client and charges no budget; a real one is charged before Trino fails (I25) | Read retry passes as "the loop recovers", not "the budget fits" |
+| Blind spot | `stale_docs_column` cases are always inconclusive since D045 | PLAN sees live columns, refuses correctly before EXPLORE, and never reads the stale docs | Correct behaviour, but the two cases no longer exercise docs-vs-schema; they need a question PLAN cannot settle from column names |
+
+## Results
+
+Fast profile, golden set `2026-11-26.1`. `agent-loop-v1` → `agent-loop-v3` (D045, I24):
+
+| Split | Pass rate | Execution accuracy | Over-refusal | Report |
+|-------|-----------|--------------------|--------------|--------|
+| dev (×1) | 92% → 100% | 86% → 100% | 14% → 0% | `reports/before-after-dev.md` |
+| held-out (×2) | 84% → 100% | 72% → 100% | 28% → 0% | `reports/before-after-heldout.md` |
+
+The held-out "after" run is **partial**: the API credit balance ran out with four trials
+left, and those four are inconclusive (infrastructure), so its rates cover 28 conclusive
+trials, not 34. The intermediate `agent-loop-v2` run is kept (`v2-*`, `compare-v1-v2-*`)
+because it improved the average while turning one dev case from 3/3 to 0/3 (`v*-top5-repeat`).
+Both splits are small; a 100% here means "no failure this set can show", not "correct".
 
 ## Files
 

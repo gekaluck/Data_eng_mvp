@@ -387,3 +387,20 @@ catch rate — from an invalid API key. The loop had buried the 401 under "unhan
 a TaskGroup", and the grader had counted seven crashes as seven wise refusals (I23). Both
 are fixed, and the lesson is the same one the confidence gate is built on, pointed back at
 the evaluator: a refusal only means something if a decision produced it.
+
+With a working key, the first honest numbers came in: 92% on dev, 84% on held-out, and
+every over-refusal decided at PLAN after one catalog call. PLAN had been asked to refuse
+"unsupported facts" while seeing only prose, so a description that listed "price, rank and
+change" became a schema without a market-cap column (I24). Giving PLAN the live column names
+was the obvious fix, and the first version of it was wrong in a way the average almost hid:
+both splits improved, while one top-5 question went from three passes out of three to zero,
+because PLAN had simply moved its suspicion from columns to dates it could not see. Only the
+per-case table and three repeats on each version showed that. The second version says what
+PLAN is for — structure, not data — and both splits came back clean (D045). Two things I
+chose not to fix are written down instead: on the fast profile a single engine retry does
+not fit three budget tokens, and the planted fault flatters that case because it costs
+nothing (I25); and the stale-docs cases stopped testing anything once PLAN could see the
+truth. The last held-out trials ran the account out of credit, which turned into the best
+test of I23's fix the project could have asked for: four trials were scored inconclusive,
+not as refusals, and the comparison now says "partial run" above the table instead of
+letting a 100% stand on its own.
