@@ -67,19 +67,25 @@ local sync.
 
 ### Operational notes
 
-- The two schedules are deliberately paired: capture at **00:30 UTC**, orchestrator at
-  **05:30 UTC** (D034). The headroom means each local run processes the same day's snapshot
-  instead of trailing it by one. Move one and you must move the other — a test now enforces
-  a minimum four-hour gap, because this pairing has broken twice (I14, I20).
-- GitHub's scheduled runs are best-effort and **late, never early**. Early drift on this
-  repo was 5–30 min; measured on 2026-07-30 and 07-31 the 00:30 UTC cron completed at 03:40
-  and 03:59 UTC. Drift doesn't corrupt anything — the partition date is resolved inside the
-  script — but it silently pushed the whole pipeline a day behind when it outgrew the
-  orchestrator's buffer (I20).
+- The capture runs at **00:30 UTC**. The orchestrator doesn't try to guess when it lands:
+  it polls **hourly at `:15`** (D047). Each poll is a bucket listing and a quiet skip until
+  the day's file appears, and the next poll after that processes it. Three fixed offsets
+  in a row were outrun by drift (I14, I20, I30), so no schedule here assumes a delay any more.
+  `test_orchestrator_runs_well_after_the_capture_cron` checks that a capture landing at
+  any minute of its UTC day waits at most an hour for the next run.
+- GitHub's scheduled runs are best-effort and **late, never early**, and the lateness has
+  grown steadily. Early drift on this repo was 5–30 min, about 3.5h in July 2026 (I20), a
+  4.6h median in September, and a 7.5h median in the last week of November, with a worst
+  case of 9.8h (the 11-24 run started at 10:15 UTC). GitHub can also skip a day
+  outright (2026-10-11, I29). Drift doesn't corrupt anything, because the partition date is
+  resolved inside the script from the UTC wall clock at fetch time. It would only cross a
+  day boundary past ~23.5h.
 - GitHub **disables scheduled workflows after 60 days of repo inactivity** (it emails
   first). A quiet stretch on the repo silently stops capture — the thing this design
   exists to prevent.
-- Cost at this volume is negligible: one small Parquet PUT per day, KB-scale objects.
+- Cost at this volume is negligible: one small Parquet PUT per day, KB-scale objects,
+  plus the orchestrator's hourly LIST while the laptop is up (~720 a month at most, a
+  fraction of a cent).
   S3 charges egress for the Phase 2 pull back down; at these sizes it rounds to zero.
 
 ## Phases
@@ -97,7 +103,7 @@ local sync.
 
 ## Running the sync
 
-The orchestrator does this automatically on its daily run. To pull manually:
+The orchestrator does this automatically on its hourly poll. To pull manually:
 
 - **`bronze_capture_sync`** — copies every captured date Bronze is missing. Optional
   `start_date`/`end_date` narrow the window; `overwrite=true` re-copies dates that

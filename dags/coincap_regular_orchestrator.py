@@ -28,15 +28,20 @@ GUARD_TASK_ID = "check_downstream_dags_ready"
 # the workflow and fails if the two disagree, so moving the real cron cannot leave this
 # comment quietly wrong; the gap assertion measures against the workflow's value.
 #
-# GitHub's scheduled runs are best-effort and late, never early. The observed drift on
-# this repo is ~3-3.5h (the 00:30 UTC cron completed at 03:40 and 03:59 UTC on 07-30 and
-# 07-31), which outgrew the one-hour buffer this DAG originally had: the orchestrator
-# ran before the capture it was meant to follow, so every day's snapshot was processed
-# by the *next* day's run and all three layers sat a day behind (I20). 05:30 UTC gives
-# five hours of headroom while staying inside the same UTC day, so the sync still sees
-# the capture that carries today's date label.
+# GitHub's scheduled runs are best-effort and late, never early, and the lateness keeps
+# growing: ~3.5h in July 2026, a 4.6h median in September, 7.5h in late November, with a
+# worst case of 9.8h (the 00:30 UTC cron started at 10:15 UTC on 11-24). Twice a fixed
+# offset was chosen to clear it, and twice the drift outgrew it, leaving every layer a
+# day behind with nothing failing (I14 at one hour, I20 and I30 at five).
+#
+# So the orchestrator no longer guesses when the capture lands. It polls hourly
+# instead (D047). The sync already skips cheaply when Bronze is current, so most runs are a
+# bucket listing and a skip with no Spark. The run after the capture lands picks it up,
+# at most an hour later, however late GitHub was. The same-UTC-day constraint
+# (the capture labels its partition from the wall clock at fetch time) no longer
+# needs a buffer: whichever hourly run sees the file processes it under its own label.
 CAPTURE_CRON_UTC = "30 0 * * *"
-ORCHESTRATOR_CRON_UTC = "30 5 * * *"
+ORCHESTRATOR_CRON_UTC = "15 * * * *"
 
 # Every DAG this orchestrator triggers. The guard task checks all of them up front so
 # a paused Gold DAG fails the run before Silver spends minutes of Spark on work whose
@@ -76,7 +81,9 @@ TRIGGER_CONF = {
     catchup=False,
     # One run at a time. When the stack starts after a long gap, the scheduler can
     # create more than one run at once; on 2026-11-26 two runs synced the same 107
-    # dates and triggered Silver over them twice, in parallel (I29).
+    # dates and triggered Silver over them twice, in parallel (I29). The hourly
+    # schedule (D047) depends on this as well: a multi-hour catch-up must queue the
+    # next poll, not run beside it.
     max_active_runs=1,
     params={
         "start_date": Param(

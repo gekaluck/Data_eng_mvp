@@ -341,26 +341,43 @@ class TestDagIntegrity:
         )
 
     def test_orchestrator_runs_well_after_the_capture_cron(self, dagbag):
-        """The orchestrator must leave room for GitHub's scheduled-run drift.
+        """However late the capture lands, an orchestrator run follows within an hour.
 
-        This coupling has failed twice. I14: the orchestrator ran at 00:00 UTC, before
-        the 00:30 UTC capture, and processed the previous day forever. I20: drift grew
-        to ~3.5h and swallowed the one-hour buffer that fixed I14, with the same
-        result and nothing failing. Both times the schedules were correct in isolation.
+        This coupling failed three times with a fixed offset. I14: the orchestrator
+        ran at 00:00 UTC, before the 00:30 UTC capture. I20: ~3.5h of drift swallowed
+        the one-hour buffer. I30: drift kept growing (9.8h worst case by 2026-11-24) and
+        swallowed the five-hour one. Each time the layers sat a day behind with
+        nothing failing.
 
-        Four hours is the floor, not the target — the DAG uses five. The capture side
-        is read from the workflow file, so moving the real cron fails this test.
+        So the orchestrator polls instead (D047). The test simulates the capture
+        landing at every minute of the UTC day after its own cron time, from on time to
+        23:59, and asserts the next orchestrator run comes within 60 minutes. No drift
+        assumption is left to outgrow. The capture side is read from the workflow file,
+        so moving the real cron still re-checks this.
         """
+        from datetime import datetime, timedelta, timezone
+
+        from croniter import croniter
+
         from coincap_regular_orchestrator import ORCHESTRATOR_CRON_UTC
 
-        def _minutes(cron: str) -> int:
-            minute, hour = cron.split()[:2]
-            return int(hour) * 60 + int(minute)
+        # Start just before midnight so get_next() returns this day's capture slot.
+        day_start = datetime(2026, 11, 24, tzinfo=timezone.utc)
+        capture_slot = croniter(_capture_cron_from_workflow(), day_start - timedelta(seconds=1)).get_next(datetime)
+        assert capture_slot.date() == day_start.date(), "expected the capture to fire once on this UTC day"
 
-        gap_minutes = _minutes(ORCHESTRATOR_CRON_UTC) - _minutes(_capture_cron_from_workflow())
-        assert gap_minutes >= 4 * 60, (
-            f"the orchestrator runs {gap_minutes}min after the capture cron; "
-            "GitHub's drift is routinely hours, so the sync would miss the same day's snapshot"
+        worst_wait = 0.0
+        landed = capture_slot
+        while landed.date() == day_start.date():
+            # The first orchestrator run strictly after the file lands.
+            next_run = croniter(ORCHESTRATOR_CRON_UTC, landed).get_next(datetime)
+            worst_wait = max(worst_wait, (next_run - landed).total_seconds() / 60)
+            landed += timedelta(minutes=1)
+
+        assert worst_wait <= 60, (
+            f"a capture can wait {worst_wait:.0f}min for the next orchestrator run; "
+            "GitHub's drift is routinely hours and growing, so a fixed offset will be "
+            "outrun again (I14, I20, I30)"
         )
         assert dagbag.dags["coincap_regular_orchestrator"].schedule_interval == ORCHESTRATOR_CRON_UTC
 
