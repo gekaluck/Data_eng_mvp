@@ -1,6 +1,7 @@
 """Offline end-to-end eval runs: real AgentLoop, oracle provider, canned MCP tools."""
 
 import asyncio
+import json
 
 from ai_agent.eval.cases import GoldenCase, GoldenSet, load_golden_set
 from ai_agent.eval.faults import FaultInjectingGateway
@@ -126,6 +127,19 @@ def test_report_and_comparison_render():
     worse = _run(OracleProvider(CASES), WrongNumberTools()).model_dump(mode="json")
     comparison = render_comparison(worse, run)
     assert "| `price` |" in comparison
+    assert "| inconclusive |" in comparison
+    assert "Partial run" not in comparison
+
+
+def test_comparison_flags_trials_lost_to_infrastructure():
+    """The v3 held-out run lost 4 trials to an exhausted credit balance and still read
+    100%: rates exclude inconclusive trials, so the comparison must say it is partial."""
+    run = _run(OracleProvider(CASES), _tools()).model_dump(mode="json")
+    cut_short = json.loads(json.dumps(run))
+    cut_short["trials"][0]["verdict"] = "inconclusive"
+    cut_short["trials"][0]["infrastructure_error"] = "Claude plan request failed: 400"
+    comparison = render_comparison(run, cut_short)
+    assert "**Partial run:** after lost 1 trial(s) to infrastructure errors" in comparison
 
 
 def test_fault_gateway_passes_through_without_a_fault():

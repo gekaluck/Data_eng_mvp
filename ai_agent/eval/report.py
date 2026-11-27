@@ -166,9 +166,24 @@ def render_comparison(before: dict[str, Any], after: dict[str, Any], *, title: s
         "",
     ]
     groups = [g for g in ("dev", "heldout", "all") if g in b and g in a]
+    lost = {
+        label: summary["all"]["infrastructure_errors"]
+        for label, summary in (("before", b), ("after", a))
+        if summary["all"]["infrastructure_errors"]
+    }
+    if lost:
+        # Rates exclude inconclusive trials, so a run cut short by a provider outage can
+        # still show 100%. Say so above the table, not only in a row of it.
+        lines += [
+            "> **Partial run:** "
+            + "; ".join(f"{label} lost {n} trial(s) to infrastructure errors" for label, n in lost.items())
+            + ". Rates cover conclusive trials only.",
+            "",
+        ]
     lines += ["| Metric | " + " | ".join(f"{g} before | {g} after" for g in groups) + " |",
               "|---" * (2 * len(groups) + 1) + "|"]
-    metrics = ["pass_rate", "execution_accuracy", "over_refusal_rate", "refusal_catch_rate"]
+    metrics = ["trials", "inconclusive", "infrastructure_errors",
+               "pass_rate", "execution_accuracy", "over_refusal_rate", "refusal_catch_rate"]
     for metric in metrics:
         lines.append(f"| {metric} | " + " | ".join(f"{_fmt(b[g][metric])} | {_fmt(a[g][metric])}" for g in groups) + " |")
     for name in SCORE_NAMES:
