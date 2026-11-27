@@ -77,6 +77,11 @@ class EvalRun(BaseModel):
     pins: RunPins
     preflight_failures: tuple[PreflightFailure, ...]
     trials: tuple[TrialResult, ...]
+    # Snapshots re-read after the last trial. References and agent queries read
+    # current data, so a rebuild mid-run would grade agents against stale ground truth
+    # while `pins.table_snapshots` still showed the starting state.
+    table_snapshots_after: dict[str, int | None] | None = None
+    data_changed: bool = False
 
 
 def allow_list_sha256(path: str | Path = DEFAULT_ALLOW_LIST_PATH) -> str:
@@ -228,7 +233,17 @@ async def run_cases(
             )
             results.append(result)
             progress(f"t{trial} {case.id}: {result.verdict}")
-    return EvalRun(pins=pins, preflight_failures=tuple(failures), trials=tuple(results))
+    snapshots_after = await table_snapshots(gateway)
+    data_changed = snapshots_after != snapshots
+    if data_changed:
+        progress("WARNING: table snapshots changed during the run; results are not trustworthy")
+    return EvalRun(
+        pins=pins,
+        preflight_failures=tuple(failures),
+        trials=tuple(results),
+        table_snapshots_after=snapshots_after,
+        data_changed=data_changed,
+    )
 
 
 # ------------------------------------------------------------------ local MCP process

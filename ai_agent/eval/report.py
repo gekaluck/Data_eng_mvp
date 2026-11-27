@@ -87,9 +87,15 @@ _NUMERIC_METRICS = frozenset({"mean_tool_calls"})
 def render_run(run: dict[str, Any]) -> str:
     pins = run["pins"]
     summary = summarize_run(run)
-    lines = [
-        f"# Eval run `{pins['run_id']}`",
-        "",
+    lines = [f"# Eval run `{pins['run_id']}`", ""]
+    if run.get("data_changed"):
+        lines += [
+            "> **Data changed during this run:** table snapshots at the end differ from the "
+            "pins below, so references and agent queries may have read different data. "
+            "Do not quote these numbers; rerun on a stable stack.",
+            "",
+        ]
+    lines += [
         "## Pins",
         "",
         "| Pin | Value |",
@@ -150,7 +156,25 @@ def comparability_problems(before: dict[str, Any], after: dict[str, Any]) -> lis
             problems.append(f"`{key}` differs between runs")
     if before["pins"]["profile"] != after["pins"]["profile"]:
         problems.append("profiles differ")
+    for label, run in (("before", before), ("after", after)):
+        if run.get("data_changed"):
+            problems.append(f"data changed during the {label} run")
+    # The same golden set can still be scored on different cases: a --case subset, a
+    # different --split, or a case skipped at preflight. Compare what was actually scored.
+    before_cases, after_cases = _scored_cases(before), _scored_cases(after)
+    if before_cases != after_cases:
+        parts = []
+        for label, missing in (("only before", before_cases - after_cases), ("only after", after_cases - before_cases)):
+            if missing:
+                shown = sorted(missing)
+                parts.append(f"{label}: " + ", ".join(f"`{c}`" for c in shown[:5])
+                             + (f" (+{len(shown) - 5} more)" if len(shown) > 5 else ""))
+        problems.append("scored cases differ (" + "; ".join(parts) + ")")
     return problems
+
+
+def _scored_cases(run: dict[str, Any]) -> set[str]:
+    return {trial["case_id"] for trial in run["trials"]}
 
 
 def render_comparison(before: dict[str, Any], after: dict[str, Any], *, title: str = "Before / after") -> str:

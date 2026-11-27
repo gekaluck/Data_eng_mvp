@@ -179,3 +179,39 @@ def test_case_dates_stay_inside_local_gold_coverage():
         text = " ".join(filter(None, (case.question, case.reference_sql, case.probe_sql)))
         for found in re.findall(r"\d{4}-\d{2}-\d{2}", text):
             assert first <= found <= last, (case.id, found)
+
+
+class RebuiltMidRunTools(CannedTools):
+    """Every snapshot read after the first sees a newer snapshot, like a dbt rebuild."""
+
+    reads = 0
+
+    async def get_table_snapshots(self, table, *, limit=2):
+        history = await super().get_table_snapshots(table, limit=limit)
+        self.reads += 1
+        if self.reads == 1:
+            return history
+        newer = history.snapshots[0].model_copy(update={"snapshot_id": 43})
+        return history.model_copy(update={"snapshots": (newer,)})
+
+
+def test_snapshot_change_during_a_run_is_detected_and_flagged():
+    stable = _run(OracleProvider(CASES), _tools())
+    assert stable.data_changed is False
+    assert stable.table_snapshots_after == stable.pins.table_snapshots
+
+    rebuilt = RebuiltMidRunTools(_tools().results)
+    changed = _run(OracleProvider(CASES), rebuilt)
+    assert changed.data_changed is True
+    payload = changed.model_dump(mode="json")
+    assert "Data changed during this run" in render_run(payload)
+    assert "data changed during the after run" in render_comparison(stable.model_dump(mode="json"), payload)
+
+
+def test_comparison_flags_a_different_scored_case_set():
+    full = _run(OracleProvider(CASES), _tools()).model_dump(mode="json")
+    subset = json.loads(json.dumps(full))
+    dropped = subset["trials"].pop()["case_id"]
+    comparison = render_comparison(full, subset)
+    assert f"scored cases differ (only before: `{dropped}`)" in comparison
+    assert "scored cases differ" not in render_comparison(full, full)
