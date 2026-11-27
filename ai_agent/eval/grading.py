@@ -33,7 +33,7 @@ from ai_agent.agent_service.tracing import AgentTraceEntry
 from ai_agent.eval.cases import GoldenCase
 from ai_agent.eval.faults import FaultLog
 
-GRADER_VERSION = "grader-v2"
+GRADER_VERSION = "grader-v3"
 # Refusals that come from the plumbing, not from a decision. A trial that ends this way
 # measured nothing about the agent: it is inconclusive, never a "correct refusal" (I23).
 _INFRASTRUCTURE_REFUSALS = ("Agent infrastructure failed", " request failed: ")
@@ -460,6 +460,12 @@ def _infrastructure_error(
     for entry in entries:
         if entry.event == "mcp.session.ready" and entry.status == "failed":
             return "MCP session could not be opened"
+        # Any failed model call means no decision was made at that stage: a token-limit
+        # stop, an unparseable structured response, the wrong number of text blocks, a
+        # timeout. The refusal message varies; the trace event does not (I26).
+        if entry.event == "llm.completed" and entry.status == "failed":
+            failure = f"{entry.stage} model call failed ({entry.metadata.get('error_type', 'error')})"
+            return f"{failure}: {reason}" if reason else failure
     return None
 
 
