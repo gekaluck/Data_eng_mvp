@@ -327,7 +327,27 @@ def test_plan_can_refuse_without_drafting_or_touching_business_rows():
     assert result.answer is None
     assert result.refusal_reason == "not in Gold"
     assert result.sql is None
-    assert [name for name, _ in tools.calls] == ["list_tables"]
+    # PLAN reads metadata only (catalog + live schema); nothing that charges a budget.
+    assert {name for name, _ in tools.calls} == {"list_tables", "get_table_schema"}
+
+
+def test_plan_sees_live_columns_and_explore_reuses_the_schema():
+    """I24: PLAN refused market-cap questions because the table description did not
+    mention market cap. It must see the live column names, not only the prose."""
+    provider = FakeProvider(
+        plan=[plan()],
+        draft=[draft()],
+        answer=[AnswerDecision(answer="ok", caveats=())],
+    )
+    tools = FakeTools()
+
+    run(AgentLoop(provider, FakeGateway(tools)))
+
+    plan_prompt = provider.calls[0]["prompt"]
+    assert '"live_columns"' in plan_prompt
+    # One schema read per catalog table, at PLAN; EXPLORE does not fetch it again.
+    schema_reads = [value for name, value in tools.calls if name == "get_table_schema"]
+    assert len(schema_reads) == len(set(schema_reads))
 
 
 def test_unknown_or_excessive_plan_is_refused_deterministically():

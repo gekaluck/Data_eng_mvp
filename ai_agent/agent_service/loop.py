@@ -34,6 +34,7 @@ from ai_agent.agent_service.tracing import (
     elapsed_ms,
 )
 from ai_agent.mcp_server.budget import BudgetProfile
+from ai_agent.mcp_server.metadata_models import TableSchema
 from ai_agent.mcp_server.query_executor import ExecutedQuery
 
 _PROFILE_TIMEOUTS: dict[BudgetProfile, float] = {"fast": 30.0, "thorough": 120.0}
@@ -113,6 +114,16 @@ class AgentLoop:
             async with self._session_within(deadline, trace) as raw_tools:
                 tools = TracingAgentTools(raw_tools, trace)
                 catalog = await self._within(deadline, tools.list_tables())
+                # PLAN must judge whether a column exists from the live schema, never
+                # from description prose: a summary that names "price and rank" made it
+                # refuse market-cap questions on a table that has market_cap_usd (I24).
+                # Schema reads are metadata calls and do not charge the query budget.
+                schemas = {
+                    table.table.casefold(): await self._within(
+                        deadline, tools.get_table_schema(table.table)
+                    )
+                    for table in catalog
+                }
                 plan = await self._llm(
                     deadline,
                     trace=trace,
@@ -123,7 +134,16 @@ class AgentLoop:
                         "question": request.question,
                         "catalog": CatalogContext(
                             tables=tuple(
-                                table.model_dump(mode="json") for table in catalog
+                                {
+                                    **table.model_dump(mode="json"),
+                                    "live_columns": [
+                                        column.name
+                                        for column in schemas[
+                                            table.table.casefold()
+                                        ].columns
+                                    ],
+                                }
+                                for table in catalog
                             )
                         ).model_dump(mode="json"),
                     },
@@ -161,6 +181,7 @@ class AgentLoop:
                     tools,
                     selected,
                     sample_tables={table.casefold() for table in plan.sample_tables},
+                    schemas=schemas,
                     request_id=request_id,
                     profile=request.profile,
                     deadline=deadline,
@@ -474,6 +495,7 @@ class AgentLoop:
         tables: tuple[str, ...],
         *,
         sample_tables: set[str],
+        schemas: dict[str, TableSchema],
         request_id: str,
         profile: BudgetProfile,
         deadline: float,
@@ -481,7 +503,8 @@ class AgentLoop:
         explored: list[dict[str, Any]] = []
         for table in tables:
             docs = await self._within(deadline, tools.get_model_docs(table))
-            schema = await self._within(deadline, tools.get_table_schema(table))
+            # Already read for PLAN; reuse it so EXPLORE sees the same schema.
+            schema = schemas[table.casefold()]
             snapshots = await self._within(
                 deadline, tools.get_table_snapshots(table, limit=2)
             )

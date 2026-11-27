@@ -27,7 +27,10 @@ def prompt(stage: str, payload: dict[str, Any]) -> str:
             "Classify whether the question is answerable from this catalog. If it is, "
             "select one to three exact fully qualified table names. Request samples "
             "only when value formats cannot be inferred from schema/docs. Refuse "
-            "unsupported entities, grains, or facts."
+            "unsupported entities, grains, or facts. Each table lists live_columns: "
+            "decide whether a needed column exists from live_columns, never from the "
+            "description alone, and remember a metric over a date range can be "
+            "computed from per-date rows."
         ),
         "draft": (
             "Draft one fully qualified Trino SELECT that answers the question. Alias "
