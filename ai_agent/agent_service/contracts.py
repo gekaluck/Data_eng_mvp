@@ -12,7 +12,7 @@ from ai_agent.mcp_server.budget import (
 from ai_agent.mcp_server.query_executor import QueryExecutionStats
 
 MAX_QUESTION_CHARS = 4_000
-PROMPT_VERSION = "agent-loop-v2"
+PROMPT_VERSION = "agent-loop-v3"
 FAST_MODEL_ID = "claude-sonnet-5"
 THOROUGH_MODEL_ID = "claude-opus-5"
 
