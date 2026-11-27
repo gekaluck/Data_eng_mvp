@@ -107,6 +107,71 @@ def test_resolve_target_dates_enforces_safety_cap():
         resolve_target_dates(context)
 
 
+def test_resolve_target_dates_keeps_gaps_in_an_explicit_date_list():
+    """A catch-up over a window the capture missed a day of must not ask for that day.
+
+    I29: GitHub dropped the 2026-10-11 capture, the sync landed 107 dates around it,
+    and a start..end range turned that back into 108, one of which never existed.
+    """
+    context = {
+        "logical_date": datetime(2026, 11, 25, 5, 30, 0),
+        "dag_run": DummyDagRun({"dates": "2026-10-10,2026-10-12,2026-10-13"}),
+    }
+    assert resolve_target_dates(context) == [
+        date(2026, 10, 10),
+        date(2026, 10, 12),
+        date(2026, 10, 13),
+    ]
+
+
+def test_resolve_target_dates_accepts_a_list_and_sorts_and_dedupes():
+    context = {
+        "logical_date": datetime(2026, 11, 25, 5, 30, 0),
+        "dag_run": DummyDagRun({"dates": ["2026-10-13", " 2026-10-10", "2026-10-13"]}),
+    }
+    assert resolve_target_dates(context) == [date(2026, 10, 10), date(2026, 10, 13)]
+
+
+def test_resolve_target_dates_treats_empty_dates_as_absent():
+    """The Airflow trigger form submits every param, so an unset one arrives as null."""
+    context = {
+        "logical_date": datetime(2026, 11, 25, 5, 30, 0),
+        "dag_run": DummyDagRun({"dates": None, "start_date": None, "end_date": None}),
+    }
+    assert resolve_target_dates(context) == [date(2026, 11, 25)]
+
+
+def test_resolve_target_dates_rejects_dates_with_a_range():
+    context = {
+        "logical_date": datetime(2026, 11, 25, 5, 30, 0),
+        "dag_run": DummyDagRun(
+            {"dates": "2026-10-10", "start_date": "2026-10-10", "end_date": "2026-10-12"}
+        ),
+    }
+    with pytest.raises(ValueError, match="not both"):
+        resolve_target_dates(context)
+
+
+def test_resolve_target_dates_rejects_an_invalid_listed_date():
+    context = {
+        "logical_date": datetime(2026, 11, 25, 5, 30, 0),
+        "dag_run": DummyDagRun({"dates": "2026-10-10,10/12/2026"}),
+    }
+    with pytest.raises(ValueError, match="10/12/2026"):
+        resolve_target_dates(context)
+
+
+def test_resolve_target_dates_caps_an_explicit_date_list():
+    start = date(2026, 1, 1)
+    too_many = [(start + timedelta(days=i)).isoformat() for i in range(MAX_GOLD_RANGE_DAYS + 1)]
+    context = {
+        "logical_date": datetime(2026, 11, 25, 5, 30, 0),
+        "dag_run": DummyDagRun({"dates": ",".join(too_many)}),
+    }
+    with pytest.raises(ValueError, match="safety cap"):
+        resolve_target_dates(context)
+
+
 def test_bronze_assets_key_builds_expected_partition_path():
     assert (
         bronze_assets_key(date(2026, 3, 15))

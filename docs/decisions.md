@@ -1786,3 +1786,91 @@ conflicts. They need rewriting into questions PLAN cannot settle from column nam
 **Revisit if**: the catalog grows beyond a handful of tables, at which point every request
 paying for every schema stops being cheap and PLAN needs retrieval (§10 `search_catalog`)
 instead; or a post-EXPLORE refusal path lands, which would make PLAN's refusals optional.
+
+---
+
+## D046 — The Orchestrator Hands Downstream an Exact Date List, Not a Range
+**Date**: 2026-11-26
+**Status**: accepted
+
+**Decision**: `coincap_regular_orchestrator` passes the sync's `synced_dates` list to Silver,
+both Golds and the dbt tests as `dates` (comma-separated), in place of `start_date`/`end_date`.
+`resolve_target_dates` treats `dates` as exactly the dates to run, holes and all, and
+rejects a conf that gives both `dates` and a range. The orchestrator runs one at a time
+(`max_active_runs=1`).
+
+**Why**: The capture can miss a day outright. GitHub dropped the 2026-10-11 scheduled run,
+and a range spanning that day asked Silver for a partition that will never exist, which
+stalled a 107-day catch-up (I29). The sync already knew the exact list. Passing its
+endpoints threw that away and rebuilt something less true.
+
+**Alternatives considered**:
+- *Let Silver's sensor proceed when some dates are missing.* That reverses the reason
+  the sensor is all-or-nothing: a partial catch-up waits rather than transforming half
+  a window. It can't tell "not landed yet" from "never coming" either.
+- *Split the range into consecutive runs in the orchestrator.* More trigger tasks and a
+  dynamic DAG shape, to arrive at the same set of dates.
+- *Fill the missing day from history.* It costs credits, and a history-repaired day carries
+  price and market cap only (D032). It also doesn't help the next gap.
+
+**Revisit if**: the downstream jobs move away from per-date processing, or a run needs to
+cover more than the 366-date cap.
+
+---
+
+## D047 — The Orchestrator Polls Hourly Instead of Guessing the Capture's Drift (supersedes D034)
+**Date**: 2026-11-26
+**Status**: accepted
+
+**Decision**: `coincap_regular_orchestrator` runs on `15 * * * *`, every hour at :15,
+in place of D034's single `30 5 * * *` slot. The capture cron stays at `30 0 * * *`.
+`test_orchestrator_runs_well_after_the_capture_cron` no longer asserts a minimum offset. It
+simulates the capture landing at every minute of its UTC day and asserts the next
+orchestrator run follows within 60 minutes. The hourly schedule relies on
+`max_active_runs=1` (D046), so a multi-hour catch-up queues the next poll rather than
+running beside it.
+
+**Why**:
+
+- **The drift has no ceiling we can see.** Over 80 scheduled runs (09-07 → 11-26) the
+  median start went from 4.6h past the cron in September to 5.3h in October and 6.7h in
+  November. The last week's median was 7.5h, and the worst case was 9.8h (11-24, start 10:15 UTC). That
+  is roughly an hour more every month. D034's five hours ran out on 09-27, and 46 of the next 60
+  captures finished after the slot (I30). Moving to 13:30 UTC would cover today's worst
+  case with under four hours to spare, which at this rate is about three months.
+- **The polling machinery already existed.** The sync skips when Bronze is current, before any
+  Spark runs. So an hourly schedule costs a bucket listing and a skipped run per hour, not
+  Spark work. D034 rejected "run twice a day" because it "doubles Spark work for no new
+  data". That was wrong: the skip happens first.
+- **It removes the guess rather than resizing it.** With an hourly poll the lag after
+  the file lands is at most an hour for any drift that keeps the capture inside its UTC day.
+  The partition label comes from the wall clock at fetch time (D027), so that only fails past
+  ~23.5h of drift, and then the capture itself would be mislabelling.
+- **The laptop's hours stop mattering.** 05:30 UTC is 23:30 in Chicago, so the old slot fired
+  only when the laptop was up late. An hourly poll fires during whatever hours it is on.
+
+**Consequences**:
+- The Airflow grid shows ~24 orchestrator runs a day, almost all `skipped`. A skip is still
+  the honest "nothing new" signal. A capture that never lands still fails the freshness
+  check (H3) within two days.
+- About 720 S3 LIST requests a month at most, only while the stack is up. That rounds to zero.
+- Fresh data reaches Gold within an hour of the capture, instead of at a fixed hour that
+  might be before it.
+
+**Alternatives considered**:
+- **Move the orchestrator later** (13:30 UTC). One line, and it would break again on the
+  current trend. The same mistake for a third time with a bigger number.
+- **Move the capture cron earlier in the UTC day.** It is already at 00:30, so 00:00 gains
+  30 minutes, and that is GitHub's busiest minute. A cron on the previous UTC day (say 20:00)
+  would label the snapshot D-1 when on time and D when late, because the label comes from
+  the wall clock at fetch time. That would produce duplicate and missing days.
+- **An off-peak cron minute** (e.g. `17 3 * * *`) in the hope of less queueing. Unproven
+  on this repo, and still a buffer.
+- **A sensor waiting for the day's object, in `mode="reschedule"`.** Also buffer-free, and
+  D034's objection (it holds a worker slot) only applies to poke mode. But it needs new
+  code (a key check, a timeout, a soft fail for days GitHub drops) to get what the hourly
+  schedule and the existing skip already give.
+- **Have the capture trigger the sync.** Still needs an inbound path to a laptop (D034).
+
+**Revisit if**: the stack moves somewhere always-on with a reachable endpoint (then the
+capture can signal completion directly), or the hourly skips start costing real time or money.

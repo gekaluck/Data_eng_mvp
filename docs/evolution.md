@@ -248,6 +248,25 @@ thought to assert.
 **"The incident is closed because the fix is merged."** I16 was fixed in code and open in
 the data for weeks.
 
+**"A catch-up is a range."** The sync returned a list of dates, and the orchestrator passed
+only its first and last. That works until the list has a hole. On 2026-11-26, after three
+and a half months with the laptop off, GitHub had skipped the 10-11 capture entirely. Silver
+was asked for 108 consecutive days, waited an hour for the missing one, and failed. Bronze
+was now current, so every later run would have quietly processed one day at a time and left
+the window behind for good ([I29](incidents.md), [D046](decisions.md)). *Passing a set by
+its endpoints assumes the set has no holes, and this one came from a third party's
+best-effort schedule.*
+
+**"A big enough buffer fixes cron drift."** I believed this twice. I14 got an hour, and I20
+got five hours plus a test that "enforced" the gap. The test compared two cron strings, so it
+could never notice GitHub getting slower, and GitHub did, by about an hour a month. The
+five hours ran out on 2026-09-27 and nobody noticed for two months. When I finally measured,
+the worst case was 9.8h ([I30](incidents.md)). The honest fix was already sitting in the code.
+The sync skips when there is nothing new, so polling every hour costs a bucket listing,
+not Spark ([D047](decisions.md)). D034 had rejected "run it more often" because it would
+"double Spark work", and I never checked that against the skip. *If you can cheaply ask
+"is it there yet?", ask often, and stop predicting when it will arrive.*
+
 ---
 
 ## Threads worth pulling for a write-up

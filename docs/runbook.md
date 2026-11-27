@@ -173,22 +173,57 @@ order:
 A skip is the correct response to "nothing new", so the fault is upstream in the cloud
 capture, not in the local stack.
 
-### Every layer is exactly one day behind, and nothing failed
+### Bronze is current but Silver and Gold are weeks behind
 
-The orchestrator ran *before* that day's capture landed, so it found nothing and skipped;
-the next day's run picks the snapshot up. Compare the capture workflow's completion time
-with the orchestrator's schedule (05:30 UTC, D034):
+A catch-up synced into Bronze and then failed downstream. Once Bronze holds the dates, no
+later sync will offer them again, so this does not fix itself (I29). Check, in order:
+
+- Find the newest date in each layer. A run's success flag doesn't show it:
+
+  ```bash
+  docker compose exec minio sh -c 'ls /data/bronze/crypto/assets/year=2026/month=11'
+  ```
+
+  ```sql
+  select max(snapshot_date), count(distinct snapshot_date) from silver.crypto.price_snapshots;
+  ```
+
+- The orchestrator's `trigger_silver_assets` log, then the Silver run's `wait_for_bronze`
+  log. A line like `Checking 108 Bronze partition(s) -> missing=2026-10-11` followed by
+  `Sensor has timed out` means Silver was asked for a date Bronze does not have.
+- Capture runs around the missing date (`gh run list --workflow=daily-capture.yml --limit 60`).
+  A day with **no run at all** is GitHub dropping the schedule, and that day is not coming.
+
+To recover, run the window once. The sync re-copies it and hands Silver and both Golds
+exactly the dates it found, gaps included:
 
 ```bash
-gh run list --workflow=daily-capture.yml --limit 5
+docker compose exec airflow-scheduler airflow dags trigger coincap_regular_orchestrator \
+  --conf '{"start_date": "2026-08-11", "end_date": "2026-11-26", "overwrite": true}'
 ```
 
-GitHub's scheduled runs are late, never early, and the drift grows over time — it reached
-~3.5h in July 2026 and swallowed the one-hour buffer that used to be enough (I20). If
-completion times are creeping toward 05:30 UTC, move the orchestrator later and update D034;
-`test_orchestrator_runs_well_after_the_capture_cron` enforces a four-hour minimum gap. A
-single catch-up run needs no arguments — the sync copies whatever Bronze lacks and hands the
-range downstream.
+This makes no CoinCap calls. A range given *directly* to `silver_coincap_assets` is still
+treated as consecutive days, so for a window with a hole, pass `dates` (a comma-separated
+list) to the downstream jobs instead of `start_date`/`end_date`.
+
+### Every layer is exactly one day behind, and nothing failed
+
+This was the symptom of a fixed orchestrator slot that GitHub's drift outran (I14, I20,
+I30). Since D047 the orchestrator polls hourly at `:15`, so a capture is processed within
+an hour of landing however late it ran. A day-behind lag now means the polls themselves
+aren't happening or aren't seeing the file. Check, in order:
+
+- Is the orchestrator running every hour? The grid should show a run per hour, mostly
+  `skipped`. Hourly runs that are all `queued` mean one long run is holding
+  `max_active_runs=1`, so look at that run instead.
+- Did today's capture actually run and upload? `gh run list --workflow=daily-capture.yml --limit 5`.
+  Its log ends with `Uploaded ... day=DD`.
+- The orchestrator's `sync_captured_snapshots` log after the capture's completion time. It
+  should list today's date. A skip *after* the upload means the sync is reading a
+  different bucket or prefix than the capture writes.
+
+A single catch-up run needs no arguments. The sync copies whatever Bronze lacks and hands
+exactly those dates downstream.
 
 ### The orchestrator fails on `check_downstream_dags_ready`
 

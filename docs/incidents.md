@@ -727,6 +727,106 @@ stayed there.
 
 ---
 
+## I29 — One day the capture never ran stranded a 107-day catch-up in Bronze
+**Date**: 2026-11-26 · **Status**: fixed (code); catch-up run pending
+
+**Symptom**: Silver, both Golds and `data_availability_daily` all ended at **2026-08-10**,
+3.5 months stale, while the GitHub capture reported success every day through 11-26. The
+stack had been off since 08-10, which is expected. But the first catch-up run after it came
+back up, on 2026-11-26, failed too. Latest date per stage at 02:06 UTC on 11-27:
+
+| Stage | Latest | Notes |
+|-------|--------|-------|
+| GitHub capture | 2026-11-26 | No run at all on 2026-10-11, between run 38029945246 (10-10) and 38211947429 (10-12) |
+| Bronze (MinIO) | 2026-11-26 | The sync copied 107 dates, 08-11 → 11-26, missing 10-11 |
+| Silver / Spark Gold / dbt Gold | 2026-08-10 | 118 dates each |
+
+**Root cause**: The orchestrator handed the next jobs only the first and last synced dates
+(`start_date=2026-08-11`, `end_date=2026-11-26`), and `resolve_target_dates` expanded those
+back into a 108-day consecutive range. Silver's `wait_for_bronze` needs every date in
+its range, so it logged `Checking 108 Bronze partition(s) -> missing=2026-10-11` once a
+minute, hit its 3600 s timeout, did the same on the retry, and failed the orchestrator. Both
+Gold jobs and the dbt tests were `upstream_failed`. The capture gap itself is GitHub
+dropping a scheduled run outright. That is a different failure from the drift in I20:
+there is no failed run to see, just no run.
+
+The failure was **sticky**. Bronze now held the whole window, so every later sync would
+find only the new day and process only that. The 107 dates would have stayed in Bronze
+indefinitely, and no test would have noticed: the Gold coverage tests compare Gold
+against Silver, and Silver was missing the same window.
+
+Separately, two orchestrator runs (`scheduled__2026-08-10` and `scheduled__2026-11-25`)
+started together when the scheduler came back. They synced the same dates and triggered
+Silver over them twice, in parallel.
+
+**Fix**: The sync's XCom already carried the exact `synced_dates` list. The orchestrator
+now passes that list, as `dates`, instead of its endpoints. `resolve_target_dates` honours
+`dates` (gaps allowed, sorted, de-duplicated, same 366-date cap), and all four downstream
+jobs expose it as a param. `test_orchestrator_hands_downstream_the_exact_synced_dates`
+renders the real trigger conf against a gapped sync result and checks the gap survives. The
+orchestrator is now `max_active_runs=1`. To recover, run the orchestrator once with
+`start_date=2026-08-11`, `end_date=2026-11-26` and `overwrite=true` (no CoinCap calls; see
+the runbook). 2026-10-11 stays a gap: `/assets` is live-only, and a history repair would
+carry price and market cap only (D032).
+
+**Also seen**: The capture's completion times have drifted well past the orchestrator's 05:30
+UTC slot again (runs started 06:57–10:15 UTC between 11-15 and 11-26). That is the I20 failure mode
+coming back: each day would be processed a day late. It's not fixed here.
+
+**Lesson**: Passing a set of dates as its endpoints assumes the set has no holes, and the
+input here was a third party's best-effort schedule. H3 asks "is the newest file recent?"
+and was right to stay quiet. No check asked "is every day in between present?", and
+nothing needed to, until a gap and a range met. The worst part was not the failed run but
+the run after it, which would have succeeded while stranding everything before it.
+
+---
+
+## I30 — The five-hour buffer ran out on 09-27, and nothing noticed for two months
+**Date**: 2026-09-27 → 11-26 · **Status**: fixed
+
+**Symptom**: Found while investigating I29. The capture's start times had drifted past the
+orchestrator's 05:30 UTC slot (D034): 06:57–10:15 UTC between 11-15 and 11-26. The I20
+failure mode was back. Any day the stack was up at 05:30 UTC, the run would find nothing new,
+skip, and leave that day's snapshot for the next day's run. Every layer would run a day
+behind, all green.
+
+**Measured** (80 scheduled runs, `gh run list --workflow=daily-capture.yml --limit 80`;
+start minus the 00:30 UTC slot, and every run took under a minute):
+
+| Window | Median drift | Max |
+|--------|-------------|-----|
+| Jul 2026 (I20) | ~3.5h | ~3.5h |
+| Sep 2026 | 4.6h | 5.5h |
+| Oct 2026 | 5.3h | 6.5h |
+| Nov 2026 | 6.7h | 9.8h (11-24, started 10:15 UTC) |
+| Last 7 runs | 7.5h | 9.8h |
+
+The first capture to finish after 05:30 was **2026-09-27** (05:30:32). Since then, **46 of
+the next 60** finished after the slot. The actual damage was small only by luck: the stack
+was off from 08-10 to 11-26 (I29). With `catchup=False`, a stack that boots after the capture
+runs once at boot and does see that day's file.
+
+**Root cause**: The same as I14 and I20. A fixed offset was sized to observed drift, and
+the drift kept growing, about an hour a month. D034 called its test a "tripwire on the assumption",
+but the test compared two cron *strings*. It could only fail if someone edited a cron, never
+because GitHub got slower. The runbook did say "if completion times are creeping toward 05:30
+UTC, move the orchestrator later", but that depended on someone looking, and nobody did for two months.
+
+**Fix**: The orchestrator polls hourly at :15 (D047). The sync's existing skip makes every
+poll before the file lands a cheap no-op, and the first poll after it processes it, at most an
+hour later, whatever the drift. `test_orchestrator_runs_well_after_the_capture_cron` now
+simulates the capture landing at every minute of its UTC day and fails if any landing waits
+more than 60 minutes. Against the old `30 5 * * *` it reports a 1440-minute worst case.
+
+**Lesson**: I14 and I20 already taught "a buffer sized to observed behaviour is a guess with
+a decimal point on it". The fix for I20 was still a bigger buffer. A tripwire that checks the
+config can't catch a change in the world, and a runbook line that says "keep an eye on it" is
+not a check. The way out wasn't a better number. It was to stop needing one: the sync could
+already tell "nothing yet" from "something new", so asking often enough made the arrival time
+irrelevant.
+
+---
+
 ## Hardening items
 
 None open. H1–H6 have all landed.

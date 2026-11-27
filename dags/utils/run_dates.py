@@ -57,16 +57,62 @@ def resolve_optional_date_param(
         ) from exc
 
 
+def resolve_explicit_dates(context: dict[str, Any]) -> list[date] | None:
+    """Return the exact dates listed in ``dag_run.conf.dates``, or None when absent.
+
+    Accepts a list or a comma-separated string (a templated conf value renders to a
+    string). The result is sorted and de-duplicated. Unlike a start/end range, the
+    list may have holes, which is the point: a catch-up over a window where the
+    capture missed a day must not ask for that day (I29).
+    """
+    dag_run = context.get("dag_run")
+    conf = getattr(dag_run, "conf", None) or {}
+    raw_value = conf.get("dates")
+
+    if raw_value in (None, "", []):
+        return None
+
+    items = raw_value.split(",") if isinstance(raw_value, str) else list(raw_value)
+    parsed: set[date] = set()
+    for item in items:
+        if isinstance(item, date):
+            parsed.add(item)
+            continue
+        try:
+            parsed.add(datetime.strptime(str(item).strip(), "%Y-%m-%d").date())
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid date {item!r} in dates. Use a comma-separated YYYY-MM-DD list."
+            ) from exc
+
+    if len(parsed) > MAX_GOLD_RANGE_DAYS:
+        raise ValueError(
+            f"Requested {len(parsed)} dates exceeds the "
+            f"{MAX_GOLD_RANGE_DAYS}-day safety cap for a single Gold range run."
+        )
+
+    return sorted(parsed)
+
+
 def resolve_target_dates(context: dict[str, Any]) -> list[date]:
     """Return the list of partition dates to process for this run.
 
-    - If both ``start_date`` and ``end_date`` are provided in ``dag_run.conf``, returns
-      the inclusive date range (used to rebuild Gold across a backfilled window).
+    - If ``dates`` is provided in ``dag_run.conf``, returns exactly those dates. This is
+      what the orchestrator sends: the dates its sync actually landed, gaps included.
+    - If both ``start_date`` and ``end_date`` are provided, returns the inclusive date
+      range (used to rebuild Gold across a backfilled window by hand).
     - Otherwise falls back to a single date via ``resolve_target_date`` (the scheduled
       logical date, or a manual ``target_date`` override).
     """
     start_date = resolve_optional_date_param(context, "start_date")
     end_date = resolve_optional_date_param(context, "end_date")
+    explicit_dates = resolve_explicit_dates(context)
+
+    if explicit_dates is not None:
+        # Two ways to say which dates to run would leave one of them silently ignored.
+        if start_date is not None or end_date is not None:
+            raise ValueError("Provide either dates or start_date/end_date, not both.")
+        return explicit_dates
 
     if start_date is None and end_date is None:
         return [resolve_target_date(context)]

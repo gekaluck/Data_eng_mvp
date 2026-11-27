@@ -57,6 +57,14 @@ def validate_envvars(envvars: dict[str, str]) -> None:
             type=["null", "string"],
             description="Optional YYYY-MM-DD end of an inclusive range (requires start_date).",
         ),
+        "dates": Param(
+            default=None,
+            type=["null", "string"],
+            description=(
+                "Optional comma-separated YYYY-MM-DD list of exact dates; gaps allowed. "
+                "The orchestrator sends this. Use instead of start_date/end_date, not with them."
+            ),
+        ),
     },
     default_args={
         "retries": 1,
