@@ -173,6 +173,39 @@ order:
 A skip is the correct response to "nothing new", so the fault is upstream in the cloud
 capture, not in the local stack.
 
+### Bronze is current but Silver and Gold are weeks behind
+
+A catch-up synced into Bronze and then failed downstream. Once Bronze holds the dates, no
+later sync will offer them again, so this does not fix itself (I29). Check, in order:
+
+- Find the newest date in each layer. A run's success flag doesn't show it:
+
+  ```bash
+  docker compose exec minio sh -c 'ls /data/bronze/crypto/assets/year=2026/month=11'
+  ```
+
+  ```sql
+  select max(snapshot_date), count(distinct snapshot_date) from silver.crypto.price_snapshots;
+  ```
+
+- The orchestrator's `trigger_silver_assets` log, then the Silver run's `wait_for_bronze`
+  log. A line like `Checking 108 Bronze partition(s) -> missing=2026-10-11` followed by
+  `Sensor has timed out` means Silver was asked for a date Bronze does not have.
+- Capture runs around the missing date (`gh run list --workflow=daily-capture.yml --limit 60`).
+  A day with **no run at all** is GitHub dropping the schedule, and that day is not coming.
+
+To recover, run the window once. The sync re-copies it and hands Silver and both Golds
+exactly the dates it found, gaps included:
+
+```bash
+docker compose exec airflow-scheduler airflow dags trigger coincap_regular_orchestrator \
+  --conf '{"start_date": "2026-08-11", "end_date": "2026-11-26", "overwrite": true}'
+```
+
+This makes no CoinCap calls. A range given *directly* to `silver_coincap_assets` is still
+treated as consecutive days, so for a window with a hole, pass `dates` (a comma-separated
+list) to the downstream jobs instead of `start_date`/`end_date`.
+
 ### Every layer is exactly one day behind, and nothing failed
 
 The orchestrator ran *before* that day's capture landed, so it found nothing and skipped;

@@ -1682,3 +1682,32 @@ loopback; questions or Gold models begin carrying personal, customer, regulated,
 data; traces leave the workstation; retention/rotation becomes operationally material; a
 compliance requirement appears; or the eval/monitoring workload justifies OpenTelemetry,
 central storage, access controls, encryption, sampling, and field-level redaction.
+
+---
+
+## D046 — The Orchestrator Hands Downstream an Exact Date List, Not a Range
+**Date**: 2026-11-26
+**Status**: accepted
+
+**Decision**: `coincap_regular_orchestrator` passes the sync's `synced_dates` list to Silver,
+both Golds and the dbt tests as `dates` (comma-separated), in place of `start_date`/`end_date`.
+`resolve_target_dates` treats `dates` as exactly the dates to run, holes and all, and
+rejects a conf that gives both `dates` and a range. The orchestrator runs one at a time
+(`max_active_runs=1`).
+
+**Why**: The capture can miss a day outright. GitHub dropped the 2026-10-11 scheduled run,
+and a range spanning that day asked Silver for a partition that will never exist, which
+stalled a 107-day catch-up (I29). The sync already knew the exact list. Passing its
+endpoints threw that away and rebuilt something less true.
+
+**Alternatives considered**:
+- *Let Silver's sensor proceed when some dates are missing.* That reverses the reason
+  the sensor is all-or-nothing: a partial catch-up waits rather than transforming half
+  a window. It can't tell "not landed yet" from "never coming" either.
+- *Split the range into consecutive runs in the orchestrator.* More trigger tasks and a
+  dynamic DAG shape, to arrive at the same set of dates.
+- *Fill the missing day from history.* It costs credits, and a history-repaired day carries
+  price and market cap only (D032). It also doesn't help the next gap.
+
+**Revisit if**: the downstream jobs move away from per-date processing, or a run needs to
+cover more than the 366-date cap.

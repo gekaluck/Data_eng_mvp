@@ -538,6 +538,60 @@ not be able to silence the only indication that telemetry is being lost.
 
 ---
 
+## I29 — One day the capture never ran stranded a 107-day catch-up in Bronze
+**Date**: 2026-11-26 · **Status**: fixed (code); catch-up run pending
+
+**Symptom**: Silver, both Golds and `data_availability_daily` all ended at **2026-08-10**,
+3.5 months stale, while the GitHub capture reported success every day through 11-26. The
+stack had been off since 08-10, which is expected. But the first catch-up run after it came
+back up, on 2026-11-26, failed too. Latest date per stage at 02:06 UTC on 11-27:
+
+| Stage | Latest | Notes |
+|-------|--------|-------|
+| GitHub capture | 2026-11-26 | No run at all on 2026-10-11, between run 38029945246 (10-10) and 38211947429 (10-12) |
+| Bronze (MinIO) | 2026-11-26 | The sync copied 107 dates, 08-11 → 11-26, missing 10-11 |
+| Silver / Spark Gold / dbt Gold | 2026-08-10 | 118 dates each |
+
+**Root cause**: The orchestrator handed the next jobs only the first and last synced dates
+(`start_date=2026-08-11`, `end_date=2026-11-26`), and `resolve_target_dates` expanded those
+back into a 108-day consecutive range. Silver's `wait_for_bronze` needs every date in
+its range, so it logged `Checking 108 Bronze partition(s) -> missing=2026-10-11` once a
+minute, hit its 3600 s timeout, did the same on the retry, and failed the orchestrator. Both
+Gold jobs and the dbt tests were `upstream_failed`. The capture gap itself is GitHub
+dropping a scheduled run outright. That is a different failure from the drift in I20:
+there is no failed run to see, just no run.
+
+The failure was **sticky**. Bronze now held the whole window, so every later sync would
+find only the new day and process only that. The 107 dates would have stayed in Bronze
+indefinitely, and no test would have noticed: the Gold coverage tests compare Gold
+against Silver, and Silver was missing the same window.
+
+Separately, two orchestrator runs (`scheduled__2026-08-10` and `scheduled__2026-11-25`)
+started together when the scheduler came back. They synced the same dates and triggered
+Silver over them twice, in parallel.
+
+**Fix**: The sync's XCom already carried the exact `synced_dates` list. The orchestrator
+now passes that list, as `dates`, instead of its endpoints. `resolve_target_dates` honours
+`dates` (gaps allowed, sorted, de-duplicated, same 366-date cap), and all four downstream
+jobs expose it as a param. `test_orchestrator_hands_downstream_the_exact_synced_dates`
+renders the real trigger conf against a gapped sync result and checks the gap survives. The
+orchestrator is now `max_active_runs=1`. To recover, run the orchestrator once with
+`start_date=2026-08-11`, `end_date=2026-11-26` and `overwrite=true` (no CoinCap calls; see
+the runbook). 2026-10-11 stays a gap: `/assets` is live-only, and a history repair would
+carry price and market cap only (D032).
+
+**Also seen**: The capture's completion times have drifted well past the orchestrator's 05:30
+UTC slot again (runs started 06:57–10:15 UTC between 11-15 and 11-26). That is the I20 failure mode
+coming back: each day would be processed a day late. It's not fixed here.
+
+**Lesson**: Passing a set of dates as its endpoints assumes the set has no holes, and the
+input here was a third party's best-effort schedule. H3 asks "is the newest file recent?"
+and was right to stay quiet. No check asked "is every day in between present?", and
+nothing needed to, until a gap and a range met. The worst part was not the failed run but
+the run after it, which would have succeeded while stranding everything before it.
+
+---
+
 ## Hardening items
 
 None open. H1–H6 have all landed.

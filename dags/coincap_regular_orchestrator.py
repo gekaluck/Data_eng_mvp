@@ -54,12 +54,15 @@ DOWNSTREAM_DAG_IDS = [
 # `wait_for_completion=True` polls forever.
 TRIGGER_EXECUTION_TIMEOUT = duration(hours=2)
 
-# Downstream DAGs process the exact window the sync just landed. Pulled from the
-# sync task's XCom so the range is discovered, never assumed.
+# Downstream DAGs process exactly the dates the sync just landed, pulled from the sync
+# task's XCom so they are discovered, never assumed. This is the date *list*, not the
+# start/end of it: the capture can miss a day (GitHub dropped the 2026-10-11 run), and
+# a start..end range would ask Silver to wait for a partition that will never exist.
+# That stalled a 107-day catch-up for good, because Bronze was then already current
+# and no later sync offered those dates again (I29).
 _SYNCED = f"ti.xcom_pull(task_ids='{SYNC_TASK_ID}')"
 TRIGGER_CONF = {
-    "start_date": f"{{{{ {_SYNCED}['start_date'] }}}}",
-    "end_date": f"{{{{ {_SYNCED}['end_date'] }}}}",
+    "dates": f"{{{{ {_SYNCED}['synced_dates'] | join(',') }}}}",
     "source_dag_id": "{{ dag.dag_id }}",
     "source_run_id": "{{ run_id }}",
 }
@@ -71,6 +74,10 @@ TRIGGER_CONF = {
     schedule=ORCHESTRATOR_CRON_UTC,
     start_date=datetime(2025, 1, 1),
     catchup=False,
+    # One run at a time. When the stack starts after a long gap, the scheduler can
+    # create more than one run at once; on 2026-11-26 two runs synced the same 107
+    # dates and triggered Silver over them twice, in parallel (I29).
+    max_active_runs=1,
     params={
         "start_date": Param(
             default=None,

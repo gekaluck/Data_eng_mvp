@@ -379,3 +379,41 @@ class TestDagIntegrity:
             params = dagbag.dags[dag_id].params
             assert "start_date" in params, f"{dag_id} is missing the start_date param"
             assert "end_date" in params, f"{dag_id} is missing the end_date param"
+            assert "dates" in params, f"{dag_id} is missing the dates param"
+
+    def test_orchestrator_hands_downstream_the_exact_synced_dates(self, dagbag):
+        """A gapped sync must reach Silver with its gap intact (I29).
+
+        Renders the real trigger conf against a sync result with a hole in it, then
+        resolves it the way the downstream DAGs do. The old start/end conf expanded
+        this to four dates, and Silver's sensor waited an hour for the missing one.
+        """
+        from jinja2 import Template
+
+        from utils.run_dates import resolve_target_dates
+
+        class FakeTI:
+            def xcom_pull(self, task_ids):
+                assert task_ids == "sync_captured_snapshots"
+                return {
+                    "synced_dates": ["2026-10-09", "2026-10-10", "2026-10-12"],
+                    "count": 3,
+                    "start_date": "2026-10-09",
+                    "end_date": "2026-10-12",
+                }
+
+        class FakeDagRun:
+            def __init__(self, conf):
+                self.conf = conf
+
+        dag = dagbag.dags["coincap_regular_orchestrator"]
+        trigger = dag.get_task("trigger_silver_assets")
+        assert "start_date" not in trigger.conf and "end_date" not in trigger.conf
+        rendered = Template(trigger.conf["dates"]).render(ti=FakeTI())
+
+        dates = resolve_target_dates({"dag_run": FakeDagRun({"dates": rendered})})
+        assert [d.isoformat() for d in dates] == ["2026-10-09", "2026-10-10", "2026-10-12"]
+
+    def test_orchestrator_runs_one_at_a_time(self, dagbag):
+        """Two catch-up runs at once sync the same dates and run Silver over them twice (I29)."""
+        assert dagbag.dags["coincap_regular_orchestrator"].max_active_runs == 1

@@ -66,8 +66,10 @@ lands (D027).
               (loopback FastAPI; bounded one-shot loop)
 ```
 
-Everything from Bronze down runs over the **range the sync discovered**, not a fixed
-"today", so a laptop that was off for a week catches up in one ordinary run.
+Everything from Bronze down runs over **exactly the dates the sync landed**, not a fixed
+"today", so a laptop that was off for a week catches up in one ordinary run. The orchestrator
+passes the list itself, not its first and last dates, so a day the capture never produced
+stays a gap and doesn't become a partition Silver waits for (D046, I29).
 
 Before triggering anything, the orchestrator checks that every downstream DAG is
 registered and unpaused, and each trigger task carries an `execution_timeout`. Triggering
@@ -204,7 +206,8 @@ migrated from local Airflow to the cloud.
 - Copies captured days the local Bronze doesn't have yet, byte-for-byte (no
   transformation — the capture already applied the Pydantic contract)
 - Idempotent by construction: it syncs the set difference, so re-running copies nothing
-- Publishes the caught-up date range, which drives Silver and both Gold paths
+- Publishes the exact list of caught-up dates (gaps included), which drives Silver and
+  both Gold paths
 - Planning logic is pure and unit-tested in `dags/utils/capture_sync.py`; the standalone
   DAG exists for manual "pull what's new" runs
 - Fails when the newest captured date is older than `CAPTURE_MAX_AGE_DAYS` (default 2), so

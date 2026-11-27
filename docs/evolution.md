@@ -248,6 +248,15 @@ thought to assert.
 **"The incident is closed because the fix is merged."** I16 was fixed in code and open in
 the data for weeks.
 
+**"A catch-up is a range."** The sync returned a list of dates, and the orchestrator passed
+only its first and last. That works until the list has a hole. On 2026-11-26, after three
+and a half months with the laptop off, GitHub had skipped the 10-11 capture entirely. Silver
+was asked for 108 consecutive days, waited an hour for the missing one, and failed. Bronze
+was now current, so every later run would have quietly processed one day at a time and left
+the window behind for good ([I29](incidents.md), [D046](decisions.md)). *Passing a set by
+its endpoints assumes the set has no holes, and this one came from a third party's
+best-effort schedule.*
+
 ---
 
 ## Threads worth pulling for a write-up
