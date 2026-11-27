@@ -651,6 +651,82 @@ system that does not exist.
 
 ---
 
+## I26 — Provider failures other than "request failed" still scored as correct refusals
+**Date**: 2026-11-26 · **Status**: fixed before release (grader-v3) · **Found by**: PR #31 review
+
+**Symptom**: None observed in a run yet; found in review. Grader-v2 (I23's fix) recognized
+infrastructure refusals by message text: `Agent infrastructure failed` or `… request
+failed: …`. The provider raises three other messages: `stopped with reason 'max_tokens'`
+(or `'refusal'`), `returned N text blocks; expected one`, and `returned an invalid
+structured response`. On a refusal case each would have been graded as the agent correctly
+declining, although no decision was made.
+
+**Root cause**: The grader matched the symptom (the refusal sentence) rather than the
+event. Every provider failure already writes an `llm.completed` trace event with status
+`failed`; the message differs by failure kind, the event does not.
+
+**Fix**: `_infrastructure_error` treats any failed `llm.completed` event as an
+infrastructure error, naming the stage and error type. `GRADER_VERSION` is `grader-v3`, so
+`compare` reports runs graded by v2 as not comparable.
+
+**Lesson**: I23's lesson applied only halfway. Telling a crash from a decision has to use
+the structured record of what happened, not the text the crash happened to print.
+
+---
+
+## I27 — One unavailable table schema blocked questions about every table
+**Date**: 2026-11-26 · **Status**: fixed before release · **Found by**: PR #31 review
+
+**Symptom**: None observed in a run yet; found in review. D045 made the loop read every
+allow-listed table's schema before PLAN. A failed read raised `ToolCallError` to the
+request's outer handler, so metadata for `weekly_roll_avg` being unavailable would have
+refused a Bitcoin price lookup that only needs `daily_snapshot`. Before D045 only the
+selected tables' schemas were required.
+
+**Root cause**: Moving a read earlier also widened what it is allowed to break. The new
+prefetch inherited EXPLORE's fail-the-request semantics, which were right for selected
+tables and wrong for all of them.
+
+**Fix**: `_catalog_schemas` reads table by table and records a failed read as `None`. PLAN
+then sees that table with `live_columns: null` and a status note saying the schema is
+temporarily unavailable, not that it has no columns. The note is in the data rather than
+the prompt, so the healthy-path prompt is unchanged from `agent-loop-v3`. If PLAN still
+selects that table, EXPLORE retries the read once, and that failure is fatal, as before.
+Two loop tests cover both paths.
+
+**Lesson**: When a step moves earlier in a pipeline, check what its failure now blocks.
+
+---
+
+## I28 — Pins and comparisons trusted more than they checked
+**Date**: 2026-11-26 · **Status**: fixed before release · **Found by**: PR #31 review
+
+**Symptom**: None observed in a run yet; found in review. Two ways a before/after report
+could mislead with no warning:
+
+1. Snapshots were pinned once, before the references and the trials. A dbt rebuild during
+   a run would grade agent results against references read from different data, while the
+   report still showed the starting snapshot IDs.
+2. `compare` checked the golden-set hash but not which cases were scored. A full run
+   compared with a `--case` subset, another split, or a run that skipped a case at
+   preflight would show its delta as if it covered the same cases.
+
+**Root cause**: Both checks inspected the *inputs* that were the same (golden set,
+starting snapshots), not what the run actually *covered* (data at the end, cases scored).
+
+**Fix**: The runner re-reads snapshots after the last trial, stores
+`table_snapshots_after` and `data_changed`, and prints a warning. A changed run has a
+"Data changed during this run" banner in its report, and `compare` lists it under "Not
+directly comparable". `compare` also flags scored case sets that differ, naming the cases
+on each side. Reports written before this change lack both fields and are read as
+unchanged. Running every query at a fixed snapshot (`FOR VERSION AS OF`) was rejected: it
+would mean rewriting the agent's own SQL, which changes what is being measured.
+
+**Lesson**: A pin records what a run started from; only a check at the end shows the run
+stayed there.
+
+---
+
 ## Hardening items
 
 None open. H1–H6 have all landed.

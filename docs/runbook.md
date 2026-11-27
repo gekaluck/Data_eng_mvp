@@ -628,6 +628,12 @@ Reports land in `ai_agent/eval/reports/<name>.md` and `.json`. When a number loo
   (`git worktree add --detach <dir> <commit>`) and copy `dbt/artifacts/` into it: it is
   untracked, and without it the harness's MCP server exits at startup and the run dies with
   `ProcessLookupError` before the first trial. Remove the worktree afterwards.
+- **"Data changed during this run" in a report, or `compare` says so.** A dbt rebuild or
+  capture landed mid-run, so references and agent queries read different data (I28).
+  Don't quote the run; rerun once nothing is writing to Gold.
+- **`compare` says "scored cases differ".** The runs did not score the same cases: a
+  `--case` subset, a different `--split`, or a preflight skip on one side. Rerun with the
+  same selection before reading the delta.
 - **A fast-profile retry case fails with `BUDGET_EXCEEDED`.** Expected while I25 is open:
   three engine calls cannot hold sample + EXPLAIN + EXECUTE + a retry. A pass on that case
   is also weaker than it looks, because planted faults do not charge the budget.

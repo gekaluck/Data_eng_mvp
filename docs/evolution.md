@@ -404,3 +404,12 @@ truth. The last held-out trials ran the account out of credit, which turned into
 test of I23's fix the project could have asked for: four trials were scored inconclusive,
 not as refusals, and the comparison now says "partial run" above the table instead of
 letting a 100% stand on its own.
+
+Review then found four places where the harness was still more trusting than it claimed
+to be. The grader I had just taught to tell a crash from a decision only recognized one kind
+of crash by its wording (I26). The PLAN fix had made every table's metadata a dependency of
+every question (I27). Pins recorded where a run started but not whether it stayed there, and
+`compare` checked that two runs used the same golden set without checking they scored the
+same cases (I28). None of them had bitten a run yet, which is exactly when they are cheapest
+to fix. The common thread is the one I keep relearning: check the record of what actually
+happened, not the label that says what should have.

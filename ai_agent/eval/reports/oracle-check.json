@@ -1,4 +1,5 @@
 {
+  "data_changed": false,
   "pins": {
     "allow_list_sha256": "9e51daa843427d05eece1ae9ac0c75f9a4720d3d43e8479dfba5da7f99d3167f",
     "case_ids": [
@@ -46,20 +47,20 @@
       "ho-retry-transient-execute",
       "ho-partial-docs-tool-down"
     ],
-    "git_commit": "595239babdc72899e0ed327d61ff1dfb7f7e5732",
+    "git_commit": "1f55823ab4ed2b6397a59d7352de57cd8d58539c",
     "git_dirty": false,
     "golden_set_sha256": "ff0948cb0220c77c9538a88f0415bd0157a84a5d20379f20b684ba17a5ac2dc4",
     "golden_set_version": "2026-11-26.1",
-    "grader_version": "grader-v2",
+    "grader_version": "grader-v3",
     "model_id": "oracle-no-api/claude-sonnet-5",
     "profile": "fast",
-    "prompt_version": "agent-loop-v1",
-    "run_id": "20261126T222112Z-81c698",
+    "prompt_version": "agent-loop-v3",
+    "run_id": "20261127T015739Z-9cf6d8",
     "splits": [
       "dev",
       "heldout"
     ],
-    "started_at": "2026-11-26T22:21:16.191859Z",
+    "started_at": "2026-11-27T01:57:43.435817Z",
     "table_snapshots": {
       "gold.crypto_dbt.daily_snapshot": 7969820825801338365,
       "gold.crypto_dbt.data_availability_daily": 1407501147473006580,
@@ -70,12 +71,19 @@
     "trials": 1
   },
   "preflight_failures": [],
+  "table_snapshots_after": {
+    "gold.crypto_dbt.daily_snapshot": 7969820825801338365,
+    "gold.crypto_dbt.data_availability_daily": 1407501147473006580,
+    "gold.crypto_dbt.latest_market_snapshot": 5566893577754171189,
+    "gold.crypto_dbt.mc_rank_change": 4443013869929247576,
+    "gold.crypto_dbt.weekly_roll_avg": 493188950816340964
+  },
   "trials": [
     {
       "advisory": {},
       "case_id": "ans-btc-price-day",
       "category": "answerable",
-      "elapsed_ms": 1297,
+      "elapsed_ms": 1953,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -83,7 +91,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ans-btc-price-day-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ans-btc-price-day-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -112,7 +120,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -126,7 +134,7 @@
       },
       "case_id": "ans-top5-mcap-names",
       "category": "answerable",
-      "elapsed_ms": 1156,
+      "elapsed_ms": 1734,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -134,7 +142,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ans-top5-mcap-names-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ans-top5-mcap-names-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -163,7 +171,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -172,7 +180,7 @@
       "advisory": {},
       "case_id": "ans-coin-count-day",
       "category": "answerable",
-      "elapsed_ms": 1172,
+      "elapsed_ms": 1688,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -180,7 +188,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ans-coin-count-day-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ans-coin-count-day-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -209,7 +217,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -218,7 +226,7 @@
       "advisory": {},
       "case_id": "ans-eth-avg-price-jul",
       "category": "answerable",
-      "elapsed_ms": 1031,
+      "elapsed_ms": 1797,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -226,7 +234,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ans-eth-avg-price-jul-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ans-eth-avg-price-jul-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -255,7 +263,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -264,7 +272,7 @@
       "advisory": {},
       "case_id": "ans-sol-peak-day-jul",
       "category": "answerable",
-      "elapsed_ms": 1016,
+      "elapsed_ms": 1937,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -272,7 +280,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ans-sol-peak-day-jul-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ans-sol-peak-day-jul-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -301,7 +309,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -310,7 +318,7 @@
       "advisory": {},
       "case_id": "ans-missing-days-h1",
       "category": "answerable",
-      "elapsed_ms": 781,
+      "elapsed_ms": 1828,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -318,7 +326,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ans-missing-days-h1-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ans-missing-days-h1-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -347,7 +355,7 @@
       "tables_used": [
         "gold.crypto_dbt.data_availability_daily"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -356,7 +364,7 @@
       "advisory": {},
       "case_id": "trap-btc-change-days-mar",
       "category": "business_trap",
-      "elapsed_ms": 1047,
+      "elapsed_ms": 2188,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -364,7 +372,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-trap-btc-change-days-mar-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-trap-btc-change-days-mar-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -393,7 +401,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -402,7 +410,7 @@
       "advisory": {},
       "case_id": "trap-rank-moved-up-14d",
       "category": "business_trap",
-      "elapsed_ms": 937,
+      "elapsed_ms": 2141,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -410,7 +418,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-trap-rank-moved-up-14d-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-trap-rank-moved-up-14d-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -439,7 +447,7 @@
       "tables_used": [
         "gold.crypto_dbt.mc_rank_change"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -448,7 +456,7 @@
       "advisory": {},
       "case_id": "trap-pct-as-fraction",
       "category": "business_trap",
-      "elapsed_ms": 1063,
+      "elapsed_ms": 2047,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -456,7 +464,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-trap-pct-as-fraction-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-trap-pct-as-fraction-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -485,7 +493,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -494,7 +502,7 @@
       "advisory": {},
       "case_id": "trap-7-calendar-days-gap",
       "category": "business_trap",
-      "elapsed_ms": 1062,
+      "elapsed_ms": 2297,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -502,7 +510,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-trap-7-calendar-days-gap-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-trap-7-calendar-days-gap-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -531,7 +539,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -540,7 +548,7 @@
       "advisory": {},
       "case_id": "trap-latest-not-today",
       "category": "business_trap",
-      "elapsed_ms": 797,
+      "elapsed_ms": 2187,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -548,7 +556,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-trap-latest-not-today-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-trap-latest-not-today-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -577,7 +585,7 @@
       "tables_used": [
         "gold.crypto_dbt.latest_market_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -586,7 +594,7 @@
       "advisory": {},
       "case_id": "refuse-hourly-grain",
       "category": "unanswerable",
-      "elapsed_ms": 391,
+      "elapsed_ms": 1969,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -594,7 +602,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "Oracle: the golden set marks this question unanswerable.",
-      "request_id": "eval-20261126T222112Z-81c698-refuse-hourly-grain-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-refuse-hourly-grain-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -621,7 +629,7 @@
       "split": "dev",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 1,
+      "tool_calls": 6,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -630,7 +638,7 @@
       "advisory": {},
       "case_id": "refuse-exchange-entity",
       "category": "unanswerable",
-      "elapsed_ms": 297,
+      "elapsed_ms": 1781,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -638,7 +646,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "Oracle: the golden set marks this question unanswerable.",
-      "request_id": "eval-20261126T222112Z-81c698-refuse-exchange-entity-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-refuse-exchange-entity-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -665,7 +673,7 @@
       "split": "dev",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 1,
+      "tool_calls": 6,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -674,7 +682,7 @@
       "advisory": {},
       "case_id": "refuse-forecast",
       "category": "unanswerable",
-      "elapsed_ms": 312,
+      "elapsed_ms": 1579,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -682,7 +690,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "Oracle: the golden set marks this question unanswerable.",
-      "request_id": "eval-20261126T222112Z-81c698-refuse-forecast-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-refuse-forecast-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -709,7 +717,7 @@
       "split": "dev",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 1,
+      "tool_calls": 6,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -718,7 +726,7 @@
       "advisory": {},
       "case_id": "nocol-bid-ask-spread",
       "category": "nonexistent_column",
-      "elapsed_ms": 313,
+      "elapsed_ms": 1562,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -726,7 +734,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "Oracle: the golden set marks this question unanswerable.",
-      "request_id": "eval-20261126T222112Z-81c698-nocol-bid-ask-spread-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-nocol-bid-ask-spread-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -753,7 +761,7 @@
       "split": "dev",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 1,
+      "tool_calls": 6,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -762,7 +770,7 @@
       "advisory": {},
       "case_id": "nocol-opening-price",
       "category": "nonexistent_column",
-      "elapsed_ms": 328,
+      "elapsed_ms": 1563,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -770,7 +778,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "Oracle: the golden set marks this question unanswerable.",
-      "request_id": "eval-20261126T222112Z-81c698-nocol-opening-price-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-nocol-opening-price-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -797,7 +805,7 @@
       "split": "dev",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 1,
+      "tool_calls": 6,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -806,7 +814,7 @@
       "advisory": {},
       "case_id": "perm-silver-raw-table",
       "category": "permission_denial",
-      "elapsed_ms": 344,
+      "elapsed_ms": 1515,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -814,7 +822,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "Oracle: the golden set marks this question unanswerable.",
-      "request_id": "eval-20261126T222112Z-81c698-perm-silver-raw-table-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-perm-silver-raw-table-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -841,7 +849,7 @@
       "split": "dev",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 1,
+      "tool_calls": 6,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -850,7 +858,7 @@
       "advisory": {},
       "case_id": "perm-engine-access-denied",
       "category": "permission_denial",
-      "elapsed_ms": 953,
+      "elapsed_ms": 1719,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [
@@ -864,7 +872,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "MCP failed with ENGINE_ERROR: Access Denied: Cannot select from table gold.crypto_dbt.daily_snapshot",
-      "request_id": "eval-20261126T222112Z-81c698-perm-engine-access-denied-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-perm-engine-access-denied-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -891,7 +899,7 @@
       "split": "dev",
       "sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-06'",
       "tables_used": [],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [
         "ENGINE_ERROR"
       ],
@@ -902,7 +910,7 @@
       "advisory": {},
       "case_id": "drift-stale-docs-24h-high",
       "category": "schema_drift",
-      "elapsed_ms": 922,
+      "elapsed_ms": 1969,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [
@@ -915,7 +923,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "VALIDATE failed: COLUMN_NOT_FOUND: line 1:35: Column 'high_24h_usd' cannot be resolved",
-      "request_id": "eval-20261126T222112Z-81c698-drift-stale-docs-24h-high-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-drift-stale-docs-24h-high-t1",
       "retries": 2,
       "scores": {
         "business_answer": {
@@ -942,7 +950,7 @@
       "split": "dev",
       "sql": "SELECT high_24h_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-05'",
       "tables_used": [],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -951,7 +959,7 @@
       "advisory": {},
       "case_id": "drift-drop-mcap-at-execute",
       "category": "schema_drift",
-      "elapsed_ms": 922,
+      "elapsed_ms": 1859,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [
@@ -964,7 +972,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "MCP failed with ENGINE_ERROR: COLUMN_NOT_FOUND: Column 'market_cap_usd' cannot be resolved",
-      "request_id": "eval-20261126T222112Z-81c698-drift-drop-mcap-at-execute-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-drift-drop-mcap-at-execute-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -991,7 +999,7 @@
       "split": "dev",
       "sql": "SELECT market_cap_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date = DATE '2026-08-05'",
       "tables_used": [],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [
         "ENGINE_ERROR"
       ],
@@ -1002,7 +1010,7 @@
       "advisory": {},
       "case_id": "limit-truncated-five-coins",
       "category": "query_limit",
-      "elapsed_ms": 1000,
+      "elapsed_ms": 2078,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1010,7 +1018,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-limit-truncated-five-coins-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-limit-truncated-five-coins-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1039,7 +1047,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1048,7 +1056,7 @@
       "advisory": {},
       "case_id": "limit-budget-exhausted",
       "category": "query_limit",
-      "elapsed_ms": 921,
+      "elapsed_ms": 1860,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [
@@ -1062,7 +1070,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "MCP failed with BUDGET_EXCEEDED: Request budget exhausted for this request_id.",
-      "request_id": "eval-20261126T222112Z-81c698-limit-budget-exhausted-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-limit-budget-exhausted-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1089,7 +1097,7 @@
       "split": "dev",
       "sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'cardano' AND snapshot_date = DATE '2026-08-05'",
       "tables_used": [],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [
         "BUDGET_EXCEEDED"
       ],
@@ -1100,7 +1108,7 @@
       "advisory": {},
       "case_id": "retry-transient-execute",
       "category": "retry",
-      "elapsed_ms": 1156,
+      "elapsed_ms": 2015,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [
@@ -1114,7 +1122,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-retry-transient-execute-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-retry-transient-execute-t1",
       "retries": 1,
       "scores": {
         "business_answer": {
@@ -1143,7 +1151,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 8,
+      "tool_calls": 12,
       "tool_errors": [
         "ENGINE_ERROR"
       ],
@@ -1154,7 +1162,7 @@
       "advisory": {},
       "case_id": "retry-transient-explain",
       "category": "retry",
-      "elapsed_ms": 1032,
+      "elapsed_ms": 1860,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [
@@ -1168,7 +1176,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-retry-transient-explain-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-retry-transient-explain-t1",
       "retries": 1,
       "scores": {
         "business_answer": {
@@ -1197,7 +1205,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 7,
+      "tool_calls": 11,
       "tool_errors": [
         "ENGINE_ERROR"
       ],
@@ -1208,7 +1216,7 @@
       "advisory": {},
       "case_id": "partial-snapshots-tool-down",
       "category": "partial_failure",
-      "elapsed_ms": 750,
+      "elapsed_ms": 1609,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [
@@ -1222,7 +1230,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "MCP failed with ENGINE_ERROR: Iceberg metadata read failed.",
-      "request_id": "eval-20261126T222112Z-81c698-partial-snapshots-tool-down-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-partial-snapshots-tool-down-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1249,7 +1257,7 @@
       "split": "dev",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 4,
+      "tool_calls": 8,
       "tool_errors": [
         "ENGINE_ERROR"
       ],
@@ -1260,7 +1268,7 @@
       "advisory": {},
       "case_id": "partial-catalog-down",
       "category": "partial_failure",
-      "elapsed_ms": 359,
+      "elapsed_ms": 266,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [
@@ -1274,7 +1282,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "MCP failed with ENGINE_ERROR: dbt manifest could not be read.",
-      "request_id": "eval-20261126T222112Z-81c698-partial-catalog-down-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-partial-catalog-down-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1312,7 +1320,7 @@
       "advisory": {},
       "case_id": "ho-ans-xrp-rank-day",
       "category": "answerable",
-      "elapsed_ms": 1125,
+      "elapsed_ms": 1875,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1320,7 +1328,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ho-ans-xrp-rank-day-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-ans-xrp-rank-day-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1349,7 +1357,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1358,7 +1366,7 @@
       "advisory": {},
       "case_id": "ho-ans-top-gainer-day",
       "category": "answerable",
-      "elapsed_ms": 1062,
+      "elapsed_ms": 1875,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1366,7 +1374,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ho-ans-top-gainer-day-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-ans-top-gainer-day-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1395,7 +1403,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1404,7 +1412,7 @@
       "advisory": {},
       "case_id": "ho-ans-available-days-jul",
       "category": "answerable",
-      "elapsed_ms": 797,
+      "elapsed_ms": 1671,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1412,7 +1420,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ho-ans-available-days-jul-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-ans-available-days-jul-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1441,7 +1449,7 @@
       "tables_used": [
         "gold.crypto_dbt.data_availability_daily"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1450,7 +1458,7 @@
       "advisory": {},
       "case_id": "ho-trap-null-30d-not-zero",
       "category": "business_trap",
-      "elapsed_ms": 828,
+      "elapsed_ms": 1735,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1458,7 +1466,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ho-trap-null-30d-not-zero-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-trap-null-30d-not-zero-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1487,7 +1495,7 @@
       "tables_used": [
         "gold.crypto_dbt.mc_rank_change"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1496,7 +1504,7 @@
       "advisory": {},
       "case_id": "ho-trap-avg-volume-jul",
       "category": "business_trap",
-      "elapsed_ms": 1000,
+      "elapsed_ms": 1859,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1504,7 +1512,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ho-trap-avg-volume-jul-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-trap-avg-volume-jul-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1533,7 +1541,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1542,7 +1550,7 @@
       "advisory": {},
       "case_id": "ho-trap-rank-3-name",
       "category": "business_trap",
-      "elapsed_ms": 1016,
+      "elapsed_ms": 1766,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1550,7 +1558,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ho-trap-rank-3-name-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-trap-rank-3-name-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1579,7 +1587,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1588,7 +1596,7 @@
       "advisory": {},
       "case_id": "ho-refuse-fee-revenue",
       "category": "unanswerable",
-      "elapsed_ms": 297,
+      "elapsed_ms": 1500,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1596,7 +1604,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "Oracle: the golden set marks this question unanswerable.",
-      "request_id": "eval-20261126T222112Z-81c698-ho-refuse-fee-revenue-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-refuse-fee-revenue-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1623,7 +1631,7 @@
       "split": "heldout",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 1,
+      "tool_calls": 6,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1632,7 +1640,7 @@
       "advisory": {},
       "case_id": "ho-refuse-wallet-count",
       "category": "unanswerable",
-      "elapsed_ms": 297,
+      "elapsed_ms": 1547,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1640,7 +1648,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "Oracle: the golden set marks this question unanswerable.",
-      "request_id": "eval-20261126T222112Z-81c698-ho-refuse-wallet-count-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-refuse-wallet-count-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1667,7 +1675,7 @@
       "split": "heldout",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 1,
+      "tool_calls": 6,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1676,7 +1684,7 @@
       "advisory": {},
       "case_id": "ho-nocol-intraday-low",
       "category": "nonexistent_column",
-      "elapsed_ms": 328,
+      "elapsed_ms": 1578,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1684,7 +1692,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "Oracle: the golden set marks this question unanswerable.",
-      "request_id": "eval-20261126T222112Z-81c698-ho-nocol-intraday-low-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-nocol-intraday-low-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1711,7 +1719,7 @@
       "split": "heldout",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 1,
+      "tool_calls": 6,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1720,7 +1728,7 @@
       "advisory": {},
       "case_id": "ho-perm-bronze-payload",
       "category": "permission_denial",
-      "elapsed_ms": 297,
+      "elapsed_ms": 1547,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1728,7 +1736,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "Oracle: the golden set marks this question unanswerable.",
-      "request_id": "eval-20261126T222112Z-81c698-ho-perm-bronze-payload-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-perm-bronze-payload-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1755,7 +1763,7 @@
       "split": "heldout",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 1,
+      "tool_calls": 6,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1764,7 +1772,7 @@
       "advisory": {},
       "case_id": "ho-perm-allowlist-revoked",
       "category": "permission_denial",
-      "elapsed_ms": 844,
+      "elapsed_ms": 1562,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [
@@ -1783,7 +1791,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "MCP failed with TABLE_NOT_ALLOWED: Table gold.crypto_dbt.daily_snapshot is not in the allow-list.",
-      "request_id": "eval-20261126T222112Z-81c698-ho-perm-allowlist-revoked-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-perm-allowlist-revoked-t1",
       "retries": 1,
       "scores": {
         "business_answer": {
@@ -1810,7 +1818,7 @@
       "split": "heldout",
       "sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'ethereum' AND snapshot_date = DATE '2026-08-07'",
       "tables_used": [],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [
         "TABLE_NOT_ALLOWED",
         "TABLE_NOT_ALLOWED"
@@ -1822,7 +1830,7 @@
       "advisory": {},
       "case_id": "ho-drift-stale-docs-eur",
       "category": "schema_drift",
-      "elapsed_ms": 968,
+      "elapsed_ms": 1594,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [
@@ -1835,7 +1843,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "VALIDATE failed: COLUMN_NOT_FOUND: line 1:35: Column 'price_eur' cannot be resolved",
-      "request_id": "eval-20261126T222112Z-81c698-ho-drift-stale-docs-eur-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-drift-stale-docs-eur-t1",
       "retries": 2,
       "scores": {
         "business_answer": {
@@ -1862,7 +1870,7 @@
       "split": "heldout",
       "sql": "SELECT price_eur FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'bitcoin' AND snapshot_date = DATE '2026-08-05'",
       "tables_used": [],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -1871,7 +1879,7 @@
       "advisory": {},
       "case_id": "ho-drift-drop-price-at-execute",
       "category": "schema_drift",
-      "elapsed_ms": 875,
+      "elapsed_ms": 1718,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [
@@ -1884,7 +1892,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "MCP failed with ENGINE_ERROR: COLUMN_NOT_FOUND: Column 'price_usd' cannot be resolved",
-      "request_id": "eval-20261126T222112Z-81c698-ho-drift-drop-price-at-execute-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-drift-drop-price-at-execute-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -1911,7 +1919,7 @@
       "split": "heldout",
       "sql": "SELECT price_usd FROM gold.crypto_dbt.daily_snapshot WHERE coin_id = 'solana' AND snapshot_date = DATE '2026-08-07'",
       "tables_used": [],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [
         "ENGINE_ERROR"
       ],
@@ -1922,7 +1930,7 @@
       "advisory": {},
       "case_id": "ho-limit-scan-cap-recover",
       "category": "query_limit",
-      "elapsed_ms": 1250,
+      "elapsed_ms": 1953,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [
@@ -1936,7 +1944,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ho-limit-scan-cap-recover-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-limit-scan-cap-recover-t1",
       "retries": 1,
       "scores": {
         "business_answer": {
@@ -1965,7 +1973,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 8,
+      "tool_calls": 12,
       "tool_errors": [
         "SCAN_LIMIT_EXCEEDED"
       ],
@@ -1976,7 +1984,7 @@
       "advisory": {},
       "case_id": "ho-limit-truncated-mcap-week",
       "category": "query_limit",
-      "elapsed_ms": 1063,
+      "elapsed_ms": 1860,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [],
@@ -1984,7 +1992,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ho-limit-truncated-mcap-week-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-limit-truncated-mcap-week-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -2013,7 +2021,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 6,
+      "tool_calls": 10,
       "tool_errors": [],
       "trial": 1,
       "verdict": "pass"
@@ -2022,7 +2030,7 @@
       "advisory": {},
       "case_id": "ho-retry-transient-execute",
       "category": "retry",
-      "elapsed_ms": 1109,
+      "elapsed_ms": 2078,
       "expected_outcome": "answer",
       "infrastructure_error": null,
       "injected_faults": [
@@ -2036,7 +2044,7 @@
       "outcome": "answer",
       "output_tokens": 0,
       "refusal_reason": null,
-      "request_id": "eval-20261126T222112Z-81c698-ho-retry-transient-execute-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-retry-transient-execute-t1",
       "retries": 1,
       "scores": {
         "business_answer": {
@@ -2065,7 +2073,7 @@
       "tables_used": [
         "gold.crypto_dbt.daily_snapshot"
       ],
-      "tool_calls": 8,
+      "tool_calls": 12,
       "tool_errors": [
         "ENGINE_ERROR"
       ],
@@ -2076,7 +2084,7 @@
       "advisory": {},
       "case_id": "ho-partial-docs-tool-down",
       "category": "partial_failure",
-      "elapsed_ms": 391,
+      "elapsed_ms": 1453,
       "expected_outcome": "refusal",
       "infrastructure_error": null,
       "injected_faults": [
@@ -2090,7 +2098,7 @@
       "outcome": "refusal",
       "output_tokens": 0,
       "refusal_reason": "MCP failed with ENGINE_ERROR: dbt manifest could not be read.",
-      "request_id": "eval-20261126T222112Z-81c698-ho-partial-docs-tool-down-t1",
+      "request_id": "eval-20261127T015739Z-9cf6d8-ho-partial-docs-tool-down-t1",
       "retries": 0,
       "scores": {
         "business_answer": {
@@ -2117,7 +2125,7 @@
       "split": "heldout",
       "sql": null,
       "tables_used": [],
-      "tool_calls": 2,
+      "tool_calls": 7,
       "tool_errors": [
         "ENGINE_ERROR"
       ],

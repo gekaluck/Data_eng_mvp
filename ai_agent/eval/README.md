@@ -17,7 +17,9 @@ this file is the operating manual.
    *case* (usually a date that fell in a coverage gap) and is skipped, not scored.
 4. Runs each case × `--trials` through `AgentLoop.answer()` in-process, with an
    in-memory full trace and an optional planted fault on the MCP client side.
-5. Grades five scores per trial and writes `reports/<name>.json` + `.md`.
+5. Re-reads the snapshots after the last trial. If any table moved, the run is marked
+   `data_changed`, its report carries a warning, and `compare` refuses it as comparable (I28).
+6. Grades five scores per trial and writes `reports/<name>.json` + `.md`.
 
 ## Commands
 
@@ -76,8 +78,9 @@ legitimately change a value; the snapshot pins say whether two runs saw the same
 
 A trial **passes** when no score fails. It is **inconclusive** when the case plants a fault
 the agent never reached (for example it refused before the faulted call), or when the run
-ended in an infrastructure error (provider request failure, MCP session failure, the loop's
-catch-all) rather than a decision. A crash is not a correct refusal (I23). Inconclusive
+ended in an infrastructure error rather than a decision: any failed model call in the trace
+(request error, token-limit stop, unparseable output; I26), an MCP session failure, or the
+loop's catch-all. A crash is not a correct refusal (I23). Inconclusive
 trials are excluded from rates and counted separately.
 
 **Result equivalence** ignores column names, allows extra agent columns, ignores row order
@@ -115,7 +118,10 @@ The held-out "after" run is **partial**: the API credit balance ran out with fou
 left, and those four are inconclusive (infrastructure), so its rates cover 28 conclusive
 trials, not 34. The intermediate `agent-loop-v2` run is kept (`v2-*`, `compare-v1-v2-*`)
 because it improved the average while turning one dev case from 3/3 to 0/3 (`v*-top5-repeat`).
-Both splits are small; a 100% here means "no failure this set can show", not "correct".
+Both splits are small; a 100% here means "no failure this set can show", not "correct". These runs were
+graded with grader-v2; none of their refusals came from the provider failures I26 added, so
+grader-v3 would not change them, but `compare` will report them as not comparable with
+newer runs.
 
 ## Files
 

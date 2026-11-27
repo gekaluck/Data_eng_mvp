@@ -1,4 +1,4 @@
-# Eval run `20261126T222112Z-81c698`
+# Eval run `20261127T015739Z-9cf6d8`
 
 ## Pins
 
@@ -6,12 +6,12 @@
 |-----|-------|
 | profile | `fast` |
 | model_id | `oracle-no-api/claude-sonnet-5` |
-| prompt_version | `agent-loop-v1` |
+| prompt_version | `agent-loop-v3` |
 | golden_set_version | `2026-11-26.1` |
 | golden_set_sha256 | `ff0948cb0220` |
-| grader_version | `grader-v2` |
+| grader_version | `grader-v3` |
 | allow_list_sha256 | `9e51daa84342` |
-| git_commit | `595239babdc72899e0ed327d61ff1dfb7f7e5732` |
+| git_commit | `1f55823ab4ed2b6397a59d7352de57cd8d58539c` |
 | git_dirty | `False` |
 | trials | `1` |
 | splits | `['dev', 'heldout']` |
@@ -28,8 +28,8 @@
 | execution_accuracy | 100% | 100% | 100% |
 | over_refusal_rate | 0% | 0% | 0% |
 | refusal_catch_rate | 100% | 100% | 100% |
-| mean_elapsed_ms | 822 | 797 | 812 |
-| mean_tool_calls | 4.7 | 4.8 | 4.7 |
+| mean_elapsed_ms | 1,808 | 1,716 | 1,771 |
+| mean_tool_calls | 8.8 | 9.1 | 8.9 |
 | mean_input_tokens | 0 | 0 | 0 |
 | mean_output_tokens | 0 | 0 | 0 |
 | total_input_tokens | 0 | 0 | 0 |
